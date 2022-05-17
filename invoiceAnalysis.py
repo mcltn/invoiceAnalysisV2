@@ -209,7 +209,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                 Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
                                     mask="id, billingItemId, categoryCode, category.name, hourlyFlag, hostName, domainName, product.description," \
                                          "createDate, totalRecurringAmount, totalOneTimeAmount, usageChargeFlag, hourlyRecurringFee," \
-                                         "children.description, children.categoryCode, children.product, children.hourlyRecurringFee")
+                                         "children.description, children.categoryCode, children.product, children.recurringFee,children.hourlyRecurringFee,children.oneTimeFee")
             except SoftLayer.SoftLayerAPIError as e:
                 logging.error("Billing_Invoice::getInvoiceTopLevelItems: %s, %s" % (e.faultCode, e.faultString))
                 quit()
@@ -266,6 +266,9 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                     hours = 0
 
                 # Special handling for storage
+                if categoryName=="Service Plan Cloud Object Storage":
+                    print (item)
+
                 if category == "storage_service_enterprise":
                     iops = getDescription("storage_tier_level", item["children"])
                     storage = getDescription("performance_storage_space", item["children"])
