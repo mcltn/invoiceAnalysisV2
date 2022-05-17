@@ -146,6 +146,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                                'Type',
                                'BillingItemId',
                                'hostName',
+                               'Category_Group',
                                'Category',
                                'Description',
                                'Memory',
@@ -207,18 +208,21 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
 
             try:
                 Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
-                                    mask="id, billingItemId, categoryCode, category.name, hourlyFlag, hostName, domainName, product.description," \
+                                    mask="id, billingItemId, categoryCode, category.name, category.group, hourlyFlag, hostName, domainName, product.description," \
                                          "createDate, totalRecurringAmount, totalOneTimeAmount, usageChargeFlag, hourlyRecurringFee," \
                                          "children.description, children.categoryCode, children.product, children.recurringFee,children.hourlyRecurringFee,children.oneTimeFee")
             except SoftLayer.SoftLayerAPIError as e:
                 logging.error("Billing_Invoice::getInvoiceTopLevelItems: %s, %s" % (e.faultCode, e.faultString))
                 quit()
-
             count = 0
             # ITERATE THROUGH DETAIL
             for item in Billing_Invoice:
                 totalOneTimeAmount = float(item['totalOneTimeAmount'])
                 billingItemId = item['billingItemId']
+                if "group" in item["category"]:
+                    categoryGroup = item["category"]["group"]["name"]
+                else:
+                    categoryGroup = ""
                 category = item["categoryCode"]
                 categoryName = item["category"]["name"]
                 description = item['product']['description']
@@ -265,9 +269,11 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                     hourlyRecurringFee = 0
                     hours = 0
 
-                # Special handling for storage
-                if categoryName=="Service Plan Cloud Object Storage":
-                    print (item)
+                # Special handling for storage categoryName.find("Platform Service Plan") != -1
+                if category.find("object") != -1:
+                    logging.info("{} totalOneTimeAmount:{} totalReccuringAmount:{}".format(item["categoryCode"],item["totalOneTimeAmount"], item["totalRecurringAmount"]))
+                    for child in item["children"]:
+                        logging.info(child)
 
                 if category == "storage_service_enterprise":
                     iops = getDescription("storage_tier_level", item["children"])
@@ -329,6 +335,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                        'Portal_Invoice_Number': invoiceID,
                        'BillingItemId': billingItemId,
                        'hostName': hostName,
+                       'Category_Group': categoryGroup,
                        'Category': categoryName,
                        'Description': description,
                        'Memory': memory,
@@ -422,7 +429,7 @@ def createReport(filename, classicUsage, paasUsage):
     # Build a pivot table by Invoice Type
     #
     if len(classicUsage)>0:
-        invoiceSummary = pd.pivot_table(classicUsage, index=["Type", "Category"],
+        invoiceSummary = pd.pivot_table(classicUsage, index=["Type", "Category_Group"],
                                         values=["totalAmount"],
                                         columns=['IBM_Invoice_Month'],
                                         aggfunc={'totalAmount': np.sum,}, margins=True, margins_name="Total", fill_value=0).\
@@ -440,7 +447,7 @@ def createReport(filename, classicUsage, paasUsage):
     # Build a pivot table by Category with totalRecurringCharges
 
     if len(classicUsage)>0:
-        categorySummary = pd.pivot_table(classicUsage, index=["Type", "Category", "Description"],
+        categorySummary = pd.pivot_table(classicUsage, index=["Type", "Category_Group", "Category", "Description"],
                                          values=["totalAmount"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'totalAmount': np.sum}, margins=True, margins_name="Total", fill_value=0)
@@ -448,9 +455,9 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet = writer.sheets['CategorySummary']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:A", 40, format2)
-        worksheet.set_column("B:B", 40, format2)
-        worksheet.set_column("C:ZZ", 18, format1)
+        worksheet.set_column("A:A", 20, format2)
+        worksheet.set_column("B:D", 40, format2)
+        worksheet.set_column("E:ZZ", 18, format1)
 
     #
     # Build a pivot table for Hourly VSI's with totalRecurringCharges
