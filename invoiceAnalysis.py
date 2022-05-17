@@ -210,7 +210,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                 Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
                                     mask="id, billingItemId, categoryCode, category.name, category.group, hourlyFlag, hostName, domainName, product.description," \
                                          "createDate, totalRecurringAmount, totalOneTimeAmount, usageChargeFlag, hourlyRecurringFee," \
-                                         "children.description, children.categoryCode, children.product, children.recurringFee,children.hourlyRecurringFee,children.oneTimeFee")
+                                         "children.description, children.notes, children.categoryCode, children.product, children.recurringFee,children.hourlyRecurringFee,children.oneTimeFee")
             except SoftLayer.SoftLayerAPIError as e:
                 logging.error("Billing_Invoice::getInvoiceTopLevelItems: %s, %s" % (e.faultCode, e.faultString))
                 quit()
@@ -222,7 +222,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                 if "group" in item["category"]:
                     categoryGroup = item["category"]["group"]["name"]
                 else:
-                    categoryGroup = ""
+                    categoryGroup = "Other"
                 category = item["categoryCode"]
                 categoryName = item["category"]["name"]
                 description = item['product']['description']
