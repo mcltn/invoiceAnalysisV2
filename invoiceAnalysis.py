@@ -145,9 +145,12 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                                'Portal_Invoice_Number',
                                'Type',
                                'BillingItemId',
+                               'ProductItemId',
+                               'ProductName',
                                'hostName',
                                'Category_Group',
                                'Category',
+                               'TaxCategory',
                                'Description',
                                'Memory',
                                'OS',
@@ -208,23 +211,27 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
 
             try:
                 Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
-                                    mask="id, billingItemId, categoryCode, category.name, category.group, hourlyFlag, hostName, domainName, product.description," \
+                                    mask="id, billingItemId, categoryCode, category, category.group, hourlyFlag, hostName, domainName, product, product.taxCategory," \
                                          "createDate, totalRecurringAmount, totalOneTimeAmount, usageChargeFlag, hourlyRecurringFee," \
-                                         "children.description, children.notes, children.categoryCode, children.product, children.recurringFee,children.hourlyRecurringFee,children.oneTimeFee")
+                                         "children.billingItemId, children.description, children.categoryCode, children.product, children.product.taxCategory, children.recurringFee")
             except SoftLayer.SoftLayerAPIError as e:
                 logging.error("Billing_Invoice::getInvoiceTopLevelItems: %s, %s" % (e.faultCode, e.faultString))
                 quit()
             count = 0
             # ITERATE THROUGH DETAIL
             for item in Billing_Invoice:
+                logging.debug(item)
                 totalOneTimeAmount = float(item['totalOneTimeAmount'])
                 billingItemId = item['billingItemId']
+                productItemId = item['product']['id']
+                productName = item['product']['keyName']
                 if "group" in item["category"]:
                     categoryGroup = item["category"]["group"]["name"]
                 else:
                     categoryGroup = "Other"
                 category = item["categoryCode"]
                 categoryName = item["category"]["name"]
+                taxCategory = item['product']['taxCategory']['name']
                 description = item['product']['description']
                 memory = getDescription("ram", item["children"])
                 os = getDescription("os", item["children"])
@@ -268,12 +275,6 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                             recurringDesc = "IaaS Monthly"
                     hourlyRecurringFee = 0
                     hours = 0
-
-                # Special handling for storage categoryName.find("Platform Service Plan") != -1
-                if category.find("object") != -1:
-                    logging.info("{} totalOneTimeAmount:{} totalReccuringAmount:{}".format(item["categoryCode"],item["totalOneTimeAmount"], item["totalRecurringAmount"]))
-                    for child in item["children"]:
-                        logging.info(child)
 
                 if category == "storage_service_enterprise":
                     iops = getDescription("storage_tier_level", item["children"])
@@ -326,6 +327,13 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                     daysLeft = daysInMonth - invoiceDate.day + 1
                     dailyAmount = recurringFee / daysLeft
                     NewEstimatedMonthly = dailyAmount * daysInMonth
+
+                #if category == "object_storage" or category == "paas_svc_plan_cloud_object_storage":
+                    #logging.info("{} totalOneTimeAmount:{} totalReccuringAmount:{}".format(item["category"]["name"],item["totalOneTimeAmount"], item["totalRecurringAmount"]))
+                    #for child in item["children"]:
+                    #    logging.info("child {} RecurringFee: {}, Detail: {}".format(child["product"]["description"], child["recurringFee"], child["description"]))
+                    #    description = description + " " + child["description"]
+
                 # Append record to dataframe
                 row = {'Portal_Invoice_Date': invoiceDate.strftime("%Y-%m-%d"),
                        'Portal_Invoice_Time': invoiceDate.strftime("%H:%M:%S%z"),
@@ -334,9 +342,12 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                        'IBM_Invoice_Month': CFTSInvoiceDate,
                        'Portal_Invoice_Number': invoiceID,
                        'BillingItemId': billingItemId,
+                       'ProductItemId': productItemId,
+                       'ProductName': productName,
                        'hostName': hostName,
                        'Category_Group': categoryGroup,
                        'Category': categoryName,
+                       'TaxCategory': taxCategory,
                        'Description': description,
                        'Memory': memory,
                        'OS': os,
@@ -353,7 +364,21 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                        'Recurring_Description': recurringDesc
                         }
 
-                df = df.append(row, ignore_index=True)
+                #if object storage only write relevant child records and not top level item.
+                if category == "object_storage" or category == "paas_svc_plan_cloud_object_storage":
+                    logging.info("Writing Object Storage children detail for billingItemid: {} instead of Top Level item.".format(billingItemId))
+                    for child in item["children"]:
+                        row["BillingItemId"] = child["billingItemId"]
+                        row["Category"] = child["product"]["itemCategory"]["name"]
+                        row["Description"] = child["description"]
+                        row["totalRecurringCharge"] = float(child["recurringFee"])
+                        if row["totalRecurringCharge"] != 0:
+                            logging.info("child {} {} RecurringFee: {}".format(row["BillingItemId"], row["Description"],
+                                                                               row["totalRecurringCharge"]))
+                            df = df.append(row, ignore_index=True)
+                else:
+                    df = df.append(row, ignore_index=True)
+
     return df
 
 def createReport(filename, classicUsage, paasUsage):
@@ -429,7 +454,7 @@ def createReport(filename, classicUsage, paasUsage):
     # Build a pivot table by Invoice Type
     #
     if len(classicUsage)>0:
-        invoiceSummary = pd.pivot_table(classicUsage, index=["Type", "Category_Group"],
+        invoiceSummary = pd.pivot_table(classicUsage, index=["Type", "Category_Group", "Category"],
                                         values=["totalAmount"],
                                         columns=['IBM_Invoice_Month'],
                                         aggfunc={'totalAmount': np.sum,}, margins=True, margins_name="Total", fill_value=0).\
