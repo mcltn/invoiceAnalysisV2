@@ -144,8 +144,9 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                                'IBM_Invoice_Month',
                                'Portal_Invoice_Number',
                                'Type',
+                               'RecordType',
                                'BillingItemId',
-                               'ProductItemId',
+                               'childBillingItemId',
                                'ProductName',
                                'hostName',
                                'Category_Group',
@@ -159,6 +160,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                                'Hours',
                                'HourlyRate',
                                'totalRecurringCharge',
+                               'childTotalRecurringCharge',
                                'NewEstimatedMonthly',
                                'totalOneTimeAmount',
                                'InvoiceTotal',
@@ -213,7 +215,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                 Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
                                     mask="id, billingItemId, categoryCode, category, category.group, hourlyFlag, hostName, domainName, product, product.taxCategory," \
                                          "createDate, totalRecurringAmount, totalOneTimeAmount, usageChargeFlag, hourlyRecurringFee," \
-                                         "children.billingItemId, children.description, children.categoryCode, children.product, children.product.taxCategory, children.recurringFee")
+                                         "children.billingItemId, children.description, children.category.group, children.categoryCode, children.product, children.product.taxCategory, children.recurringFee")
             except SoftLayer.SoftLayerAPIError as e:
                 logging.error("Billing_Invoice::getInvoiceTopLevelItems: %s, %s" % (e.faultCode, e.faultString))
                 quit()
@@ -223,7 +225,6 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                 logging.debug(item)
                 totalOneTimeAmount = float(item['totalOneTimeAmount'])
                 billingItemId = item['billingItemId']
-                productItemId = item['product']['id']
                 productName = item['product']['keyName']
                 if "group" in item["category"]:
                     categoryGroup = item["category"]["group"]["name"]
@@ -334,6 +335,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                     #    logging.info("child {} RecurringFee: {}, Detail: {}".format(child["product"]["description"], child["recurringFee"], child["description"]))
                     #    description = description + " " + child["description"]
 
+                recordType = "Parent"
                 # Append record to dataframe
                 row = {'Portal_Invoice_Date': invoiceDate.strftime("%Y-%m-%d"),
                        'Portal_Invoice_Time': invoiceDate.strftime("%H:%M:%S%z"),
@@ -341,8 +343,8 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                        'Service_Date_End': serviceDateEnd.strftime("%Y-%m-%d"),
                        'IBM_Invoice_Month': CFTSInvoiceDate,
                        'Portal_Invoice_Number': invoiceID,
+                       'RecordType': recordType,
                        'BillingItemId': billingItemId,
-                       'ProductItemId': productItemId,
                        'ProductName': productName,
                        'hostName': hostName,
                        'Category_Group': categoryGroup,
@@ -365,19 +367,26 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                         }
 
                 #if object storage only write relevant child records and not top level item.
-                if category == "object_storage" or category == "paas_svc_plan_cloud_object_storage":
-                    logging.info("Writing Object Storage children detail for billingItemid: {} instead of Top Level item.".format(billingItemId))
+                #if category == "object_storage" or category == "paas_svc_plan_cloud_object_storage":
+                df = df.append(row, ignore_index=True)
+                if len(item["children"]) > 0:
+                    logging.info("Writing children detail for billingItemid: {} instead of Top Level item.".format(billingItemId))
                     for child in item["children"]:
-                        row["BillingItemId"] = child["billingItemId"]
+                        row['RecordType'] = "Child"
+                        row["childBillingItemId"] = child["billingItemId"]
+                        row["ProductItemId"] = child["product"]["id"]
+                        row["ProductName"] = child["product"]["keyName"]
                         row["Category"] = child["product"]["itemCategory"]["name"]
+                        row["Category_Group"] = child["category"]["group"]["name"]
                         row["Description"] = child["description"]
-                        row["totalRecurringCharge"] = float(child["recurringFee"])
-                        if row["totalRecurringCharge"] != 0:
+                        row["totalRecurringCharge"] = 0
+                        row["childTotalRecurringCharge"] = float(child["recurringFee"])
+                        if row["childTotalRecurringCharge"] != 0:
                             logging.info("child {} {} RecurringFee: {}".format(row["BillingItemId"], row["Description"],
                                                                                row["totalRecurringCharge"]))
                             df = df.append(row, ignore_index=True)
-                else:
-                    df = df.append(row, ignore_index=True)
+                #else:
+                #   df = df.append(row, ignore_index=True)
 
     return df
 
@@ -402,6 +411,7 @@ def createReport(filename, classicUsage, paasUsage):
     #
 
     classicUsage["totalAmount"] = classicUsage["totalOneTimeAmount"] + classicUsage["totalRecurringCharge"]
+
 
     months = classicUsage.IBM_Invoice_Month.unique()
     for i in months:
@@ -554,9 +564,9 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("J:J", 18, format1)
 
         paasSummary = pd.pivot_table(paasUsage, index=["resource_name"],
-                                        values=["charges"],
+                                        values=["cost"],
                                         columns=["invoiceMonth"],
-                                        aggfunc={'charges': np.sum, }, margins=True, margins_name="Total",
+                                        aggfunc={'cost': np.sum, }, margins=True, margins_name="Total",
                                         fill_value=0)
         paasSummary.to_excel(writer, 'PaaS_Summary')
         worksheet = writer.sheets['PaaS_Summary']
@@ -566,9 +576,9 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("B:ZZ", 18, format1)
 
         paasSummaryPlan = pd.pivot_table(paasUsage, index=["resource_name", "plan_name"],
-                                     values=["charges"],
+                                     values=["cost"],
                                      columns=["invoiceMonth"],
-                                     aggfunc={'charges': np.sum, }, margins=True, margins_name="Total",
+                                     aggfunc={'cost': np.sum, }, margins=True, margins_name="Total",
                                      fill_value=0)
         paasSummaryPlan.to_excel(writer, 'PaaS_Plan_Summary')
         worksheet = writer.sheets['PaaS_Plan_Summary']
@@ -678,14 +688,22 @@ def accountUsage(IC_API_KEY, IC_ACCOUNT_ID, startdate, enddate):
     ##########################################################
 
     accountUsage = pd.DataFrame(columns=['usageMonth',
-                               'invoiceMonth',
-                               'resource_name',
-                               'plan_name',
-                               'billable_charges',
-                               'non_billable_charges',
-                               'unit',
-                               'quantity',
-                               'charges']
+                             'invoiceMonth',
+                             'resource_id',
+                             'resource_name',
+                             'billable_cost',
+                             'billable_rated_cost',
+                             'non_billable_cost',
+                             'non_billable_rated_cost',
+                             'plan_name',
+                             'billable',
+                             'metric',
+                             'unit',
+                             'quantity',
+                             'cost',
+                             'rated_cost',
+                             'discount'
+                                         ]
                                 )
 
     try:
@@ -720,20 +738,31 @@ def accountUsage(IC_API_KEY, IC_ACCOUNT_ID, startdate, enddate):
             logging.error("API exception {}.".format(str(e)))
             quit()
         paasStart += relativedelta(months=1)
-        for u in usage['resources']:
-            for p in u['plans']:
-                for x in p['usage']:
+        logging.debug(usage)
+        for r in usage['resources']:
+            for p in r['plans']:
+                for u in p['usage']:
                     row = {
                         'usageMonth': usageMonth,
                         'invoiceMonth': recurringMonth,
-                        'resource_name': u['resource_name'],
-                        'billable_charges': u["billable_cost"],
-                        'non_billable_charges': u["non_billable_cost"],
+                        'resource_id': r["resource_id"],
+                        'resource_name': r['resource_name'],
+                        'billable_cost': r["billable_cost"],
+                        'billable_rated_cost': r["billable_rated_cost"],
+                        'non_billable_cost': r["non_billable_cost"],
+                        'non_billable_rated_cost': r["non_billable_rated_cost"],
                         'plan_name': p["plan_name"],
-                        'unit': x["unit"],
-                        'quantity': x["quantity"],
-                        'charges': x["cost"],
+                        'billable': p["billable"],
+                        'metric': u["metric"],
+                        'unit': u["unit"],
+                        'quantity': u["quantity"],
+                        'cost': u["cost"],
+                        'rated_cost': u["rated_cost"],
                     }
+                    if len(u["discounts"])>0:
+                        row["discount"]= u["discounts"][0]["discount"]
+                    else:
+                        row["discount"] = 0
                     accountUsage = accountUsage.append(row, ignore_index=True)
     return accountUsage
 
