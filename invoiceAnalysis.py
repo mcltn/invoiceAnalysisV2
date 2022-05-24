@@ -51,7 +51,7 @@ optional arguments:
 
 """
 __author__ = 'jonhall'
-import SoftLayer, os, logging, logging.config, json, calendar, os.path, argparse, pytz, base64
+import SoftLayer, os, logging, logging.config, json, calendar, os.path, argparse, pytz, base64, re
 import pandas as pd
 import numpy as np
 from sendgrid import SendGridAPIClient
@@ -157,6 +157,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                                'OS',
                                'Hourly',
                                'Usage',
+                               'childUsage',
                                'Hours',
                                'HourlyRate',
                                'totalRecurringCharge',
@@ -374,11 +375,34 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                     for child in item["children"]:
                         row['RecordType'] = "Child"
                         row["childBillingItemId"] = child["billingItemId"]
-                        row["ProductItemId"] = child["product"]["id"]
+                        row['childParentProduct'] = description
                         row["ProductName"] = child["product"]["keyName"]
                         row["Category"] = child["product"]["itemCategory"]["name"]
                         row["Category_Group"] = child["category"]["group"]["name"]
-                        row["Description"] = child["description"]
+                        if row["Category_Group"] == "StorageLayer":
+                            desc = child["description"].find(":")
+                            if desc == -1:
+                                row["Description"] = child["description"]
+                                row["childUsage"] = ""
+                            else:
+                                # Parse usage details from child description for StorageLayer
+                                print (child["description"])
+                                row["Description"] = child["description"][0:desc]
+                                if child["description"].find("API Requests") != -1:
+                                    row['childUsage'] = float(re.search("\d+", child["description"][desc:]).group())
+                                else:
+                                    row['childUsage'] = float(re.search("\d+([\.,]\d+)",child["description"][desc:]).group())
+                        else:
+                            desc = child["description"].find("- $")
+                            if desc == -1:
+                                row["Description"] = child["description"]
+                                row["childUsage"] = ""
+
+                            else:
+                                # Parse usage details from child description
+                                row["Description"] = child["description"][0:desc]
+                                row['childUsage'] = re.search("([\d.]+)\s+(\S+)",child["description"][desc:]).group()
+                                row['childUsage'] = float(row['childUsage'][0:row['childUsage'].find("Usage")-3])
                         row["totalRecurringCharge"] = 0
                         row["childTotalRecurringCharge"] = float(child["recurringFee"])
                         if row["childTotalRecurringCharge"] != 0:
@@ -464,7 +488,8 @@ def createReport(filename, classicUsage, paasUsage):
     # Build a pivot table by Invoice Type
     #
     if len(classicUsage)>0:
-        invoiceSummary = pd.pivot_table(classicUsage, index=["Type", "Category_Group", "Category"],
+        parentRecords= classicUsage.query('RecordType == ["Parent"]')
+        invoiceSummary = pd.pivot_table(parentRecords, index=["Type", "Category_Group", "Category"],
                                         values=["totalAmount"],
                                         columns=['IBM_Invoice_Month'],
                                         aggfunc={'totalAmount': np.sum,}, margins=True, margins_name="Total", fill_value=0).\
@@ -482,7 +507,8 @@ def createReport(filename, classicUsage, paasUsage):
     # Build a pivot table by Category with totalRecurringCharges
 
     if len(classicUsage)>0:
-        categorySummary = pd.pivot_table(classicUsage, index=["Type", "Category_Group", "Category", "Description"],
+        parentRecords = classicUsage.query('RecordType == ["Parent"]')
+        categorySummary = pd.pivot_table(parentRecords, index=["Type", "Category_Group", "Category", "Description"],
                                          values=["totalAmount"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'totalAmount': np.sum}, margins=True, margins_name="Total", fill_value=0)
@@ -493,6 +519,24 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("A:A", 20, format2)
         worksheet.set_column("B:D", 40, format2)
         worksheet.set_column("E:ZZ", 18, format1)
+
+    #
+    # Build a pivot table by Category with totalRecurringCharges
+
+    if len(classicUsage)>0:
+        childRecords = classicUsage.query('RecordType == ["Child"]')
+        childSummary = pd.pivot_table(childRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
+                                         values=["childTotalRecurringCharge"],
+                                         columns=['IBM_Invoice_Month'])
+
+        childSummary.to_excel(writer, 'ChildSummary')
+        worksheet = writer.sheets['ChildSummary']
+        format1 = workbook.add_format({'num_format': '$#,##0.00'})
+        format2 = workbook.add_format({'align': 'left'})
+        worksheet.set_column("A:A", 20, format2)
+        worksheet.set_column("B:D", 40, format2)
+        worksheet.set_column("E:ZZ", 18, format1)
+
 
     #
     # Build a pivot table for Hourly VSI's with totalRecurringCharges
