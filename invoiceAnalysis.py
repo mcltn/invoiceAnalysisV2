@@ -378,7 +378,11 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                         row['childParentProduct'] = description
                         row["ProductName"] = child["product"]["keyName"]
                         row["Category"] = child["product"]["itemCategory"]["name"]
-                        row["Category_Group"] = child["category"]["group"]["name"]
+                        if "group" in child["category"]:
+                            row["Category_Group"] = child["category"]["group"]["name"]
+                        else:
+                            #use parent category group
+                            row["Category_group"] = categoryGroup
                         if row["Category_Group"] == "StorageLayer":
                             desc = child["description"].find(":")
                             if desc == -1:
@@ -426,7 +430,7 @@ def createReport(filename, classicUsage, paasUsage):
     classicUsage.to_excel(writer, 'Detail')
     usdollar = workbook.add_format({'num_format': '$#,##0.00'})
     worksheet = writer.sheets['Detail']
-    worksheet.set_column('Q:W', 18, usdollar)
+    worksheet.set_column('Q:Z', 18, usdollar)
     totalrows,totalcols=classicUsage.shape
     worksheet.autofilter(0,0,totalrows,totalcols)
 
@@ -534,8 +538,8 @@ def createReport(filename, classicUsage, paasUsage):
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
-        worksheet.set_column("B:D", 40, format2)
-        worksheet.set_column("E:ZZ", 18, format1)
+        worksheet.set_column("B:E", 40, format2)
+        worksheet.set_column("F:ZZ", 18, format1)
 
 
     #
