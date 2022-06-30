@@ -137,36 +137,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
     # GET InvoiceDetail
     global client
     # Create dataframe to work with for classic infrastructure invoices
-    df = pd.DataFrame(columns=['Portal_Invoice_Date',
-                               'Portal_Invoice_Time',
-                               'Service_Date_Start',
-                               'Service_Date_End',
-                               'IBM_Invoice_Month',
-                               'Portal_Invoice_Number',
-                               'Type',
-                               'RecordType',
-                               'BillingItemId',
-                               'childBillingItemId',
-                               'ProductName',
-                               'hostName',
-                               'Category_Group',
-                               'Category',
-                               'TaxCategory',
-                               'Description',
-                               'Memory',
-                               'OS',
-                               'Hourly',
-                               'Usage',
-                               'childUsage',
-                               'Hours',
-                               'HourlyRate',
-                               'totalRecurringCharge',
-                               'childTotalRecurringCharge',
-                               'NewEstimatedMonthly',
-                               'totalOneTimeAmount',
-                               'InvoiceTotal',
-                               'InvoiceRecurring',
-                               'Recurring_Description'])
+    data = []
 
     dallas = tz.gettz('US/Central')
 
@@ -330,12 +301,6 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                     dailyAmount = recurringFee / daysLeft
                     NewEstimatedMonthly = dailyAmount * daysInMonth
 
-                #if category == "object_storage" or category == "paas_svc_plan_cloud_object_storage":
-                    #logging.info("{} totalOneTimeAmount:{} totalReccuringAmount:{}".format(item["category"]["name"],item["totalOneTimeAmount"], item["totalRecurringAmount"]))
-                    #for child in item["children"]:
-                    #    logging.info("child {} RecurringFee: {}, Detail: {}".format(child["product"]["description"], child["recurringFee"], child["description"]))
-                    #    description = description + " " + child["description"]
-
                 recordType = "Parent"
                 # Append record to dataframe
                 row = {'Portal_Invoice_Date': invoiceDate.strftime("%Y-%m-%d"),
@@ -366,55 +331,83 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                        'Type': invoiceType,
                        'Recurring_Description': recurringDesc
                         }
+                # write parent record
+                data.append(row.copy())
+                logging.info("parent {} {} RecurringFee: {}".format(row["BillingItemId"], row["Description"],row["totalRecurringCharge"]))
+                logging.debug(row)
 
-                #if object storage only write relevant child records and not top level item.
-                #if category == "object_storage" or category == "paas_svc_plan_cloud_object_storage":
-                df = df.append(row, ignore_index=True)
                 if len(item["children"]) > 0:
-                    logging.info("Writing children detail for billingItemid: {} instead of Top Level item.".format(billingItemId))
+                    # Copy parent record and update values for child and write each non zero child
                     for child in item["children"]:
-                        row['RecordType'] = "Child"
-                        row["childBillingItemId"] = child["billingItemId"]
-                        row['childParentProduct'] = description
-                        row["ProductName"] = child["product"]["keyName"]
-                        row["Category"] = child["product"]["itemCategory"]["name"]
-                        if "group" in child["category"]:
-                            row["Category_Group"] = child["category"]["group"]["name"]
-                        else:
-                            #use parent category group
-                            row["Category_group"] = categoryGroup
-                        if row["Category_Group"] == "StorageLayer":
-                            desc = child["description"].find(":")
-                            if desc == -1:
-                                row["Description"] = child["description"]
-                                row["childUsage"] = ""
+                        if float(child["recurringFee"]) > 0:
+                            row['RecordType'] = "Child"
+                            row["childBillingItemId"] = child["billingItemId"]
+                            row['childParentProduct'] = description
+                            row["ProductName"] = child["product"]["keyName"]
+                            row["Category"] = child["product"]["itemCategory"]["name"]
+                            if "group" in child["category"]:
+                                row["Category_Group"] = child["category"]["group"]["name"]
                             else:
-                                # Parse usage details from child description for StorageLayer
-                                print (child["description"])
-                                row["Description"] = child["description"][0:desc]
-                                if child["description"].find("API Requests") != -1:
-                                    row['childUsage'] = float(re.search("\d+", child["description"][desc:]).group())
+                                row["Category_group"] = categoryGroup
+                            if row["Category_Group"] == "StorageLayer":
+                                desc = child["description"].find(":")
+                                if desc == -1:
+                                    row["Description"] = child["description"]
+                                    row["childUsage"] = ""
                                 else:
-                                    row['childUsage'] = float(re.search("\d+([\.,]\d+)",child["description"][desc:]).group())
-                        else:
-                            desc = child["description"].find("- $")
-                            if desc == -1:
-                                row["Description"] = child["description"]
-                                row["childUsage"] = ""
-
+                                    # Parse usage details from child description for StorageLayer
+                                    row["Description"] = child["description"][0:desc]
+                                    if child["description"].find("API Requests") != -1:
+                                        row['childUsage'] = float(re.search("\d+", child["description"][desc:]).group())
+                                    else:
+                                        row['childUsage'] = float(re.search("\d+([\.,]\d+)",child["description"][desc:]).group())
                             else:
-                                # Parse usage details from child description
-                                row["Description"] = child["description"][0:desc]
-                                row['childUsage'] = re.search("([\d.]+)\s+(\S+)",child["description"][desc:]).group()
-                                row['childUsage'] = float(row['childUsage'][0:row['childUsage'].find("Usage")-3])
-                        row["totalRecurringCharge"] = 0
-                        row["childTotalRecurringCharge"] = float(child["recurringFee"])
-                        if row["childTotalRecurringCharge"] != 0:
-                            logging.info("child {} {} RecurringFee: {}".format(row["BillingItemId"], row["Description"],
-                                                                               row["totalRecurringCharge"]))
-                            df = df.append(row, ignore_index=True)
-                #else:
-                #   df = df.append(row, ignore_index=True)
+                                desc = child["description"].find("- $")
+                                if desc == -1:
+                                    row["Description"] = child["description"]
+                                    row["childUsage"] = ""
+                                else:
+                                    # Parse usage details from child description
+                                    row["Description"] = child["description"][0:desc]
+                                    row['childUsage'] = re.search("([\d.]+)\s+(\S+)",child["description"][desc:]).group()
+                                    row['childUsage'] = float(row['childUsage'][0:row['childUsage'].find("Usage")-3])
+                            row["totalRecurringCharge"] = 0
+                            row["childTotalRecurringCharge"] = round(float(child["recurringFee"]),3)
+                            data.append(row.copy())
+                            logging.info("child {} {} RecurringFee: {}".format(row["childBillingItemId"], row["Description"],row["childTotalRecurringCharge"]))
+                            logging.debug(row)
+
+    df = pd.DataFrame(data, columns=['Portal_Invoice_Date',
+                               'Portal_Invoice_Time',
+                               'Service_Date_Start',
+                               'Service_Date_End',
+                               'IBM_Invoice_Month',
+                               'Portal_Invoice_Number',
+                               'Type',
+                               'RecordType',
+                               'BillingItemId',
+                               'childBillingItemId',
+                               'childParentProduct',
+                               'ProductName',
+                               'hostName',
+                               'Category_Group',
+                               'Category',
+                               'TaxCategory',
+                               'Description',
+                               'Memory',
+                               'OS',
+                               'Hourly',
+                               'Usage',
+                               'childUsage',
+                               'Hours',
+                               'HourlyRate',
+                               'totalRecurringCharge',
+                               'childTotalRecurringCharge',
+                               'NewEstimatedMonthly',
+                               'totalOneTimeAmount',
+                               'InvoiceTotal',
+                               'InvoiceRecurring',
+                               'Recurring_Description'])
 
     return df
 
@@ -429,8 +422,10 @@ def createReport(filename, classicUsage, paasUsage):
     #
     classicUsage.to_excel(writer, 'Detail')
     usdollar = workbook.add_format({'num_format': '$#,##0.00'})
+    format2 = workbook.add_format({'align': 'left'})
     worksheet = writer.sheets['Detail']
-    worksheet.set_column('Q:Z', 18, usdollar)
+    worksheet.set_column('Q:AC', 18, usdollar)
+    worksheet.set_column('W:W', 18, format2 )
     totalrows,totalcols=classicUsage.shape
     worksheet.autofilter(0,0,totalrows,totalcols)
 
@@ -450,7 +445,8 @@ def createReport(filename, classicUsage, paasUsage):
                                      values=["totalAmount"],
                                      aggfunc={'totalAmount': np.sum}, fill_value=0).sort_values(by=['Service_Date_Start', "Portal_Invoice_Number"])
 
-        out = pd.concat([d.append(d.sum().rename((k, ' ', ' ', 'Subtotal', ' '))) for k, d in SLICInvoice.groupby('Type')]).append(SLICInvoice.sum().rename((' ', ' ', ' ', 'Pay this Amount', '')))
+        #out = pd.concat([d.append(d.sum().rename((k, ' ', ' ', 'Subtotal', ' '))) for k, d in SLICInvoice.groupby('Type')]).append(SLICInvoice.sum().rename((' ', ' ', ' ', 'Pay this Amount', '')))
+        out = SLICInvoice
         out.rename(columns={"Type": "Invoice Type", "Portal_Invoice_Number": "Invoice",
                             "Service_Date_Start": "Service Start", "Service_Date_End": "Service End",
                              "Recurring_Description": "Description", "totalAmount": "Amount"}, inplace=True)
@@ -461,32 +457,6 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("A:E", 20, format2)
         worksheet.set_column("F:F", 18, format1)
 
-    #
-    # Build a pivot table by for Forecasting NEW invoices form 1st to 20th and add to last Recurring Invoice to estimate
-    # what the next recurringInvoice will be.   Uses estimated monthly charges from all NEW invoices which occurred after
-    # the recurring invoice.   This forecast assumes, no deprovisioning and NEW additional invoices after 19th.
-    invoicemonth = months[-1]
-    newstart = invoicemonth + "-01"
-    newend = invoicemonth + "-19"
-    forecastR = classicUsage.query('IBM_Invoice_Month == @invoicemonth and Type == "RECURRING"')[['Portal_Invoice_Date', 'IBM_Invoice_Month','Type','Category','totalAmount']]
-    forecastN = classicUsage.query('IBM_Invoice_Month == @invoicemonth and Type == "NEW" and Portal_Invoice_Date >= @newstart and Portal_Invoice_Date <= @newend ')[['Portal_Invoice_Date', 'IBM_Invoice_Month','Type','Category','NewEstimatedMonthly']]
-    result = forecastR.append(forecastN).fillna(0)
-    sum_column = result["totalAmount"] + result["NewEstimatedMonthly"]
-    result["nextRecurring"] = sum_column
-    if len(result) > 0:
-        newForecast = pd.pivot_table(result, index=["Category"],
-                                            values=["totalAmount", "NewEstimatedMonthly", "nextRecurring"],
-                                            aggfunc={'totalAmount': np.sum, 'NewEstimatedMonthly': np.sum, 'nextRecurring': np.sum }, margins=True, margins_name='Total', fill_value=0). \
-                                            rename(columns={'totalAmount': 'lastRecurringInvoice', 'NewEstimatedMonthly': 'NewEstimatedCharges'})
-
-        column_order = ['lastRecurringInvoice', 'NewEstimatedCharges', 'nextRecurring']
-        newForecast = newForecast.reindex(column_order, axis=1)
-        newForecast.to_excel(writer, 'recurringForecast')
-        worksheet = writer.sheets['recurringForecast']
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:A", 40, format2)
-        worksheet.set_column("B:D", 25, format1)
 
     #
     # Build a pivot table by Invoice Type
@@ -528,19 +498,72 @@ def createReport(filename, classicUsage, paasUsage):
     # Build a pivot table by Category with totalRecurringCharges
 
     if len(classicUsage)>0:
-        childRecords = classicUsage.query('RecordType == ["Child"]')
+        iaasRecords = classicUsage.query('RecordType == ["Parent"] and (Category_Group == ["Bare Metal Servers and Attached Services"] or Category_Group == ["Enterprise Services"]'\
+                                         'or Category_Group == ["Network"] or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
+                                         'or Description == ["Block Storage for VPC General Purpose Tier Gen2"] or Description == ["Virtual Server for VPC Advanced"])')
+        iaasSummary = pd.pivot_table(iaasRecords, index=["Type", "Category_Group", "Category", "Description"],
+                                         values=["totalAmount"],
+                                         columns=['IBM_Invoice_Month'],
+                                         aggfunc={'totalAmount': np.sum}, margins=True, margins_name="Total", fill_value=0)
+        iaasSummary.to_excel(writer, 'IaaSSummary')
+        worksheet = writer.sheets['IaaSSummary']
+        format1 = workbook.add_format({'num_format': '$#,##0.00'})
+        format2 = workbook.add_format({'align': 'left'})
+        worksheet.set_column("A:A", 20, format2)
+        worksheet.set_column("B:D", 40, format2)
+        worksheet.set_column("E:ZZ", 18, format1)
+
+    #
+    # Build a pivot table by Category with totalRecurringCharges
+
+    if len(classicUsage)>0:
+        childRecords = classicUsage.query('RecordType == ["Child"] and Recurring_Description == ["Platform Service Usage"] and ' \
+                '(childParentProduct != ["Block Storage for VPC 10 IOPS/GB Gen2"] and childParentProduct != ["Block Storage for VPC 5 IOPS/GB Gen2"] ' \
+                'and childParentProduct != ["Block Storage for VPC General Purpose Tier Gen2"] and childParentProduct != ["Virtual Server for VPC Advanced"])')
         childSummary = pd.pivot_table(childRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
-                                         columns=['IBM_Invoice_Month'])
+                                         columns=['IBM_Invoice_Month'],
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
+        childSummary.to_excel(writer, 'PlatformChildSummary')
+        worksheet = writer.sheets['PlatformChildSummary']
+        format1 = workbook.add_format({'num_format': '$#,##0.00'})
+        format2 = workbook.add_format({'align': 'left'})
+        worksheet.set_column("A:A", 20, format2)
+        worksheet.set_column("B:E", 40, format2)
+        worksheet.set_column("F:ZZ", 18, format1)
+    #
+    # Build a pivot table by Category with totalRecurringCharges
 
-        childSummary.to_excel(writer, 'ChildSummary')
-        worksheet = writer.sheets['ChildSummary']
+    if len(classicUsage)>0:
+        paascosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage Premium"]')
+        paascosSummary = pd.pivot_table(paascosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
+                                         values=["childTotalRecurringCharge"],
+                                         columns=['IBM_Invoice_Month'],
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
+        paascosSummary.to_excel(writer, 'PaaSObjectStorage')
+        worksheet = writer.sheets['PaaSObjectStorage']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
         worksheet.set_column("B:E", 40, format2)
         worksheet.set_column("F:ZZ", 18, format1)
 
+    #
+    # Build a pivot table by Category with totalRecurringCharges
+
+    if len(classicUsage)>0:
+        iaasscosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage - S3 API"]')
+        iaascosSummary = pd.pivot_table(iaasscosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
+                                         values=["childTotalRecurringCharge"],
+                                         columns=['IBM_Invoice_Month'],
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
+        iaascosSummary.to_excel(writer, 'IaaSObjectStorage')
+        worksheet = writer.sheets['IaaSObjectStorage']
+        format1 = workbook.add_format({'num_format': '$#,##0.00'})
+        format2 = workbook.add_format({'align': 'left'})
+        worksheet.set_column("A:A", 20, format2)
+        worksheet.set_column("B:E", 40, format2)
+        worksheet.set_column("F:ZZ", 18, format1)
 
     #
     # Build a pivot table for Hourly VSI's with totalRecurringCharges
@@ -623,7 +646,7 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("A:A", 35, format2)
         worksheet.set_column("B:ZZ", 18, format1)
 
-        paasSummaryPlan = pd.pivot_table(paasUsage, index=["resource_name", "plan_name"],
+        paasSummaryPlan = pd.pivot_table(paasUsage, index=["resource_name", "plan_name", "metric"],
                                      values=["cost"],
                                      columns=["invoiceMonth"],
                                      aggfunc={'cost': np.sum, }, margins=True, margins_name="Total",
@@ -735,25 +758,6 @@ def accountUsage(IC_API_KEY, IC_ACCOUNT_ID, startdate, enddate):
     ## Get Usage for Account matching recuring invoice periods
     ##########################################################
 
-    accountUsage = pd.DataFrame(columns=['usageMonth',
-                             'invoiceMonth',
-                             'resource_id',
-                             'resource_name',
-                             'billable_cost',
-                             'billable_rated_cost',
-                             'non_billable_cost',
-                             'non_billable_rated_cost',
-                             'plan_name',
-                             'billable',
-                             'metric',
-                             'unit',
-                             'quantity',
-                             'cost',
-                             'rated_cost',
-                             'discount'
-                                         ]
-                                )
-
     try:
         authenticator = IAMAuthenticator(IC_API_KEY)
     except ApiException as e:
@@ -787,6 +791,7 @@ def accountUsage(IC_API_KEY, IC_ACCOUNT_ID, startdate, enddate):
             quit()
         paasStart += relativedelta(months=1)
         logging.debug(usage)
+        data = []
         for r in usage['resources']:
             for p in r['plans']:
                 for u in p['usage']:
@@ -811,7 +816,26 @@ def accountUsage(IC_API_KEY, IC_ACCOUNT_ID, startdate, enddate):
                         row["discount"]= u["discounts"][0]["discount"]
                     else:
                         row["discount"] = 0
-                    accountUsage = accountUsage.append(row, ignore_index=True)
+                    data.append(row.copy())
+
+    accountUsage = pd.DataFrame(data, columns=['usageMonth',
+                                         'invoiceMonth',
+                                         'resource_id',
+                                         'resource_name',
+                                         'billable_cost',
+                                         'billable_rated_cost',
+                                         'non_billable_cost',
+                                         'non_billable_rated_cost',
+                                         'plan_name',
+                                         'billable',
+                                         'metric',
+                                         'unit',
+                                         'quantity',
+                                         'cost',
+                                         'rated_cost',
+                                         'discount'
+                                         ]
+                                )
     return accountUsage
 
 if __name__ == "__main__":
