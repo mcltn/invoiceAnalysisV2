@@ -133,9 +133,57 @@ def getInvoiceList(startdate, enddate):
         quit()
     return invoiceList
 
+def parseChildren(row, parentDescription, children):
+    """
+    Parse Children Record if requested
+    """
+    global data
+
+    for child in children:
+        if float(child["recurringFee"]) > 0:
+            row['RecordType'] = "Child"
+            row["childBillingItemId"] = child["billingItemId"]
+            row['childParentProduct'] = parentDescription
+            row["ProductName"] = child["product"]["keyName"]
+            row["Category"] = child["product"]["itemCategory"]["name"]
+            if "group" in child["category"]:
+                row["Category_Group"] = child["category"]["group"]["name"]
+            else:
+                row["Category_group"] = child['categoryGroup']
+            if row["Category_Group"] == "StorageLayer":
+                desc = child["description"].find(":")
+                if desc == -1:
+                    row["Description"] = child["description"]
+                    row["childUsage"] = ""
+                else:
+                    # Parse usage details from child description for StorageLayer
+                    row["Description"] = child["description"][0:desc]
+                    if child["description"].find("API Requests") != -1:
+                        row['childUsage'] = float(re.search("\d+", child["description"][desc:]).group())
+                    else:
+                        row['childUsage'] = float(re.search("\d+([\.,]\d+)", child["description"][desc:]).group())
+            else:
+                desc = child["description"].find("- $")
+                if desc == -1:
+                    row["Description"] = child["description"]
+                    row["childUsage"] = ""
+                else:
+                    # Parse usage details from child description
+                    row["Description"] = child["description"][0:desc]
+                    row['childUsage'] = re.search("([\d.]+)\s+(\S+)", child["description"][desc:]).group()
+                    row['childUsage'] = float(row['childUsage'][0:row['childUsage'].find("Usage") - 3])
+            row["totalRecurringCharge"] = 0
+            row["childTotalRecurringCharge"] = round(float(child["recurringFee"]), 3)
+            # write child record
+            data.append(row.copy())
+            logging.info("child {} {} RecurringFee: {}".format(row["childBillingItemId"], row["Description"],
+                                                               row["childTotalRecurringCharge"]))
+            logging.debug(row)
+    return
+
 def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
     # GET InvoiceDetail
-    global client
+    global client, data
     # Create dataframe to work with for classic infrastructure invoices
     data = []
 
@@ -336,46 +384,8 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                 logging.info("parent {} {} RecurringFee: {}".format(row["BillingItemId"], row["Description"],row["totalRecurringCharge"]))
                 logging.debug(row)
 
-                if len(item["children"]) > 0:
-                    # Copy parent record and update values for child and write each non zero child
-                    for child in item["children"]:
-                        if float(child["recurringFee"]) > 0:
-                            row['RecordType'] = "Child"
-                            row["childBillingItemId"] = child["billingItemId"]
-                            row['childParentProduct'] = description
-                            row["ProductName"] = child["product"]["keyName"]
-                            row["Category"] = child["product"]["itemCategory"]["name"]
-                            if "group" in child["category"]:
-                                row["Category_Group"] = child["category"]["group"]["name"]
-                            else:
-                                row["Category_group"] = categoryGroup
-                            if row["Category_Group"] == "StorageLayer":
-                                desc = child["description"].find(":")
-                                if desc == -1:
-                                    row["Description"] = child["description"]
-                                    row["childUsage"] = ""
-                                else:
-                                    # Parse usage details from child description for StorageLayer
-                                    row["Description"] = child["description"][0:desc]
-                                    if child["description"].find("API Requests") != -1:
-                                        row['childUsage'] = float(re.search("\d+", child["description"][desc:]).group())
-                                    else:
-                                        row['childUsage'] = float(re.search("\d+([\.,]\d+)",child["description"][desc:]).group())
-                            else:
-                                desc = child["description"].find("- $")
-                                if desc == -1:
-                                    row["Description"] = child["description"]
-                                    row["childUsage"] = ""
-                                else:
-                                    # Parse usage details from child description
-                                    row["Description"] = child["description"][0:desc]
-                                    row['childUsage'] = re.search("([\d.]+)\s+(\S+)",child["description"][desc:]).group()
-                                    row['childUsage'] = float(row['childUsage'][0:row['childUsage'].find("Usage")-3])
-                            row["totalRecurringCharge"] = 0
-                            row["childTotalRecurringCharge"] = round(float(child["recurringFee"]),3)
-                            data.append(row.copy())
-                            logging.info("child {} {} RecurringFee: {}".format(row["childBillingItemId"], row["Description"],row["childTotalRecurringCharge"]))
-                            logging.debug(row)
+                if len(item["children"]) > 0 and args.children:
+                    parseChildren(row, description, item["children"])
 
     df = pd.DataFrame(data, columns=['Portal_Invoice_Date',
                                'Portal_Invoice_Time',
@@ -495,9 +505,9 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("E:ZZ", 18, format1)
 
     #
-    # Build a pivot table by Category with totalRecurringCharges
+    # Build a pivot table for items that show on CFTS IaaS not at children level
 
-    if len(classicUsage)>0:
+    if len(classicUsage)>0 and args.children:
         iaasRecords = classicUsage.query('RecordType == ["Parent"] and (Category_Group == ["Bare Metal Servers and Attached Services"] or Category_Group == ["Enterprise Services"]'\
                                          'or Category_Group == ["Network"] or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
                                          'or Description == ["Block Storage for VPC General Purpose Tier Gen2"] or Description == ["Virtual Server for VPC Advanced"])')
@@ -514,9 +524,9 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("E:ZZ", 18, format1)
 
     #
-    # Build a pivot table by Category with totalRecurringCharges
+    # Build a pivot ttable of items that typically show on CFTS invoice at child level
 
-    if len(classicUsage)>0:
+    if len(classicUsage)>0 and args.children:
         childRecords = classicUsage.query('RecordType == ["Child"] and Recurring_Description == ["Platform Service Usage"] and ' \
                 '(childParentProduct != ["Block Storage for VPC 10 IOPS/GB Gen2"] and childParentProduct != ["Block Storage for VPC 5 IOPS/GB Gen2"] ' \
                 'and childParentProduct != ["Block Storage for VPC General Purpose Tier Gen2"] and childParentProduct != ["Virtual Server for VPC Advanced"])')
@@ -531,10 +541,11 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("A:A", 20, format2)
         worksheet.set_column("B:E", 40, format2)
         worksheet.set_column("F:ZZ", 18, format1)
-    #
-    # Build a pivot table by Category with totalRecurringCharges
 
-    if len(classicUsage)>0:
+    #
+    # Build a pivot table of PaaS object storage
+
+    if len(classicUsage)>0 and args.children:
         paascosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage Premium"]')
         paascosSummary = pd.pivot_table(paascosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
@@ -549,9 +560,9 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("F:ZZ", 18, format1)
 
     #
-    # Build a pivot table by Category with totalRecurringCharges
+    # Build a pivot table of IaaS Obhect Storage
 
-    if len(classicUsage)>0:
+    if len(classicUsage)>0 and args.children:
         iaasscosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage - S3 API"]')
         iaascosSummary = pd.pivot_table(iaasscosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
@@ -856,6 +867,8 @@ if __name__ == "__main__":
     parser.add_argument("--sendGridSubject", default=os.environ.get('sendGridSubject', None), help="SendGrid email subject for output email")
     parser.add_argument("--output", default=os.environ.get('output', 'invoice-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
     parser.add_argument("--SL_PRIVATE", default=False, action=argparse.BooleanOptionalAction, help="Use IBM Cloud Classic Private API Endpoint")
+    parser.add_argument("--children", default=False, action=argparse.BooleanOptionalAction,
+                        help="Store children records and create additional pivots based on them.")
 
     args = parser.parse_args()
 
