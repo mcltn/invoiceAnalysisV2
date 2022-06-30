@@ -144,7 +144,6 @@ def parseChildren(row, parentDescription, children):
             row['RecordType'] = "Child"
             row["childBillingItemId"] = child["billingItemId"]
             row['childParentProduct'] = parentDescription
-            row["ProductName"] = child["product"]["keyName"]
             row["Category"] = child["product"]["itemCategory"]["name"]
             if "group" in child["category"]:
                 row["Category_Group"] = child["category"]["group"]["name"]
@@ -233,7 +232,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
 
             try:
                 Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
-                                    mask="id, billingItemId, categoryCode, category, category.group, hourlyFlag, hostName, domainName, product, product.taxCategory," \
+                                    mask="id, billingItemId, categoryCode, category, category.group, hourlyFlag, hostName, domainName, product.description, product.taxCategory," \
                                          "createDate, totalRecurringAmount, totalOneTimeAmount, usageChargeFlag, hourlyRecurringFee," \
                                          "children.billingItemId, children.description, children.category.group, children.categoryCode, children.product, children.product.taxCategory, children.recurringFee")
             except SoftLayer.SoftLayerAPIError as e:
@@ -245,7 +244,6 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                 logging.debug(item)
                 totalOneTimeAmount = float(item['totalOneTimeAmount'])
                 billingItemId = item['billingItemId']
-                productName = item['product']['keyName']
                 if "group" in item["category"]:
                     categoryGroup = item["category"]["group"]["name"]
                 else:
@@ -284,16 +282,21 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                                     hourlyRecurringFee = hourlyRecurringFee + float(child['hourlyRecurringFee'])
                             hours = round(float(recurringFee) / hourlyRecurringFee)            # Not an hourly billing item
                 else:
-                    if categoryName.find("Platform Service Plan") != -1:
+                    if taxCategory == "PaaS":
                         # Non Hourly PaaS Usage from actual usage two months prior
                         serviceDateStart = invoiceDate - relativedelta(months=2)
                         serviceDateEnd = serviceDateStart.replace(day=calendar.monthrange(serviceDateStart.year, serviceDateStart.month)[1])
                         recurringDesc = "Platform Service Usage"
-                    else:
+                    elif taxCategory == "IaaS":
                         if invoiceType == "RECURRING":
                             serviceDateStart = invoiceDate
                             serviceDateEnd = serviceDateStart.replace(day=calendar.monthrange(serviceDateStart.year, serviceDateStart.month)[1])
                             recurringDesc = "IaaS Monthly"
+                    elif taxCategory == "HELP DESK":
+                        serviceDateStart = invoiceDate
+                        serviceDateEnd = serviceDateStart.replace(
+                            day=calendar.monthrange(serviceDateStart.year, serviceDateStart.month)[1])
+                        recurringDesc = "Support Charges"
                     hourlyRecurringFee = 0
                     hours = 0
 
@@ -359,7 +362,6 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                        'Portal_Invoice_Number': invoiceID,
                        'RecordType': recordType,
                        'BillingItemId': billingItemId,
-                       'ProductName': productName,
                        'hostName': hostName,
                        'Category_Group': categoryGroup,
                        'Category': categoryName,
@@ -396,9 +398,6 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                                'Type',
                                'RecordType',
                                'BillingItemId',
-                               'childBillingItemId',
-                               'childParentProduct',
-                               'ProductName',
                                'hostName',
                                'Category_Group',
                                'Category',
@@ -408,16 +407,19 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                                'OS',
                                'Hourly',
                                'Usage',
-                               'childUsage',
                                'Hours',
                                'HourlyRate',
                                'totalRecurringCharge',
-                               'childTotalRecurringCharge',
                                'NewEstimatedMonthly',
                                'totalOneTimeAmount',
                                'InvoiceTotal',
                                'InvoiceRecurring',
-                               'Recurring_Description'])
+                               'Recurring_Description',
+                               'childBillingItemId',
+                               'childParentProduct',
+                               'childUsage',
+                               'childTotalRecurringCharge'
+                                     ])
 
     return df
 
@@ -508,9 +510,9 @@ def createReport(filename, classicUsage, paasUsage):
     # Build a pivot table for items that show on CFTS IaaS not at children level
 
     if len(classicUsage)>0 and args.children:
-        iaasRecords = classicUsage.query('RecordType == ["Parent"] and (Category_Group == ["Bare Metal Servers and Attached Services"] or Category_Group == ["Enterprise Services"]'\
-                                         'or Category_Group == ["Network"] or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
-                                         'or Description == ["Block Storage for VPC General Purpose Tier Gen2"] or Description == ["Virtual Server for VPC Advanced"])')
+        iaasRecords = classicUsage.query('RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"] '\
+                                         'or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
+                                         'or Description == ["Block Storage for VPC General Purpose Tier Gen2"])')
         iaasSummary = pd.pivot_table(iaasRecords, index=["Type", "Category_Group", "Category", "Description"],
                                          values=["totalAmount"],
                                          columns=['IBM_Invoice_Month'],
@@ -524,12 +526,30 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("E:ZZ", 18, format1)
 
     #
+    # Build a pivot table of IaaS Obhect Storage
+
+    if len(classicUsage)>0 and args.children:
+        iaasscosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage - S3 API"]')
+        iaascosSummary = pd.pivot_table(iaasscosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
+                                         values=["childTotalRecurringCharge"],
+                                         columns=['IBM_Invoice_Month'],
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
+        iaascosSummary.to_excel(writer, 'IaaSObjectStorage')
+        worksheet = writer.sheets['IaaSObjectStorage']
+        format1 = workbook.add_format({'num_format': '$#,##0.00'})
+        format2 = workbook.add_format({'align': 'left'})
+        worksheet.set_column("A:A", 20, format2)
+        worksheet.set_column("B:E", 40, format2)
+        worksheet.set_column("F:ZZ", 18, format1)
+
+    #
     # Build a pivot ttable of items that typically show on CFTS invoice at child level
 
     if len(classicUsage)>0 and args.children:
-        childRecords = classicUsage.query('RecordType == ["Child"] and Recurring_Description == ["Platform Service Usage"] and ' \
+        childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and ' \
                 '(childParentProduct != ["Block Storage for VPC 10 IOPS/GB Gen2"] and childParentProduct != ["Block Storage for VPC 5 IOPS/GB Gen2"] ' \
-                'and childParentProduct != ["Block Storage for VPC General Purpose Tier Gen2"] and childParentProduct != ["Virtual Server for VPC Advanced"])')
+                'and childParentProduct != ["Block Storage for VPC General Purpose Tier Gen2"])' \
+                ' and childParentProduct != ["Cloud Object Storage Premium"]')
         childSummary = pd.pivot_table(childRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
@@ -559,22 +579,6 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("B:E", 40, format2)
         worksheet.set_column("F:ZZ", 18, format1)
 
-    #
-    # Build a pivot table of IaaS Obhect Storage
-
-    if len(classicUsage)>0 and args.children:
-        iaasscosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage - S3 API"]')
-        iaascosSummary = pd.pivot_table(iaasscosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
-                                         values=["childTotalRecurringCharge"],
-                                         columns=['IBM_Invoice_Month'],
-                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
-        iaascosSummary.to_excel(writer, 'IaaSObjectStorage')
-        worksheet = writer.sheets['IaaSObjectStorage']
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:A", 20, format2)
-        worksheet.set_column("B:E", 40, format2)
-        worksheet.set_column("F:ZZ", 18, format1)
 
     #
     # Build a pivot table for Hourly VSI's with totalRecurringCharges
