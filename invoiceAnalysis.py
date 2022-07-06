@@ -173,6 +173,13 @@ def parseChildren(row, parentDescription, children):
                     row['childUsage'] = float(row['childUsage'][0:row['childUsage'].find("Usage") - 3])
             row["totalRecurringCharge"] = 0
             row["childTotalRecurringCharge"] = round(float(child["recurringFee"]), 3)
+
+            # if cold average usage calculate discounted charge
+            if row["Category_Group"] == "StorageLayer" and child["description"].find("cold Average Usage") != -1:
+                row["childTotalRecurringCharge"] = round(
+                    (row["childUsage"] * 0.75 * 0.00099) + (row["childUsage"] * 0.25 * 0.0051), 2)
+                logging.info("Recalculating Zenfolio Discounted usage for {} GB average COS usage at {}.".format(row["childUsage"],row[
+                                                                                                         "childTotalRecurringCharge"]))
             # write child record
             data.append(row.copy())
             logging.info("child {} {} RecurringFee: {}".format(row["childBillingItemId"], row["Description"],
@@ -423,6 +430,21 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
 
     return df
 
+def trueupObjectStorage(df):
+    """
+    Trueup parent item for Object Storage discoubnt
+    """
+    storageLayer = df[df["Category_Group"] == "StorageLayer"]
+    parents = storageLayer[storageLayer["RecordType"] == "Parent"]
+    for row in parents.itertuples():
+        index = row[0]
+        billingItemId = row[9]
+        # calculate adjusted parent recurring charge from sum of children already adjusted
+        sum = df.query('BillingItemId == @billingItemId and RecordType == ["Child"]')["childTotalRecurringCharge"].sum()
+        df.at[index, 'totalRecurringCharge'] = sum
+    return df
+
+
 def createReport(filename, classicUsage, paasUsage):
     # Write dataframe to excel
     logging.info("Creating Pivots File.")
@@ -436,7 +458,9 @@ def createReport(filename, classicUsage, paasUsage):
     usdollar = workbook.add_format({'num_format': '$#,##0.00'})
     format2 = workbook.add_format({'align': 'left'})
     worksheet = writer.sheets['Detail']
-    worksheet.set_column('Q:AC', 18, usdollar)
+    worksheet.set_column('Q:AA', 18, usdollar)
+    worksheet.set_column('AB:AB', 18, format2)
+    worksheet.set_column('AC:AC', 18, usdollar)
     worksheet.set_column('W:W', 18, format2 )
     totalrows,totalcols=classicUsage.shape
     worksheet.autofilter(0,0,totalrows,totalcols)
@@ -446,29 +470,6 @@ def createReport(filename, classicUsage, paasUsage):
     #
 
     classicUsage["totalAmount"] = classicUsage["totalOneTimeAmount"] + classicUsage["totalRecurringCharge"]
-
-
-    months = classicUsage.IBM_Invoice_Month.unique()
-    for i in months:
-        logging.info("Creating top sheet for %s." % (i))
-        ibminvoicemonth = classicUsage.query('IBM_Invoice_Month == @i')
-        SLICInvoice = pd.pivot_table(ibminvoicemonth,
-                                     index=["Type", "Portal_Invoice_Number", "Service_Date_Start", "Service_Date_End", "Recurring_Description"],
-                                     values=["totalAmount"],
-                                     aggfunc={'totalAmount': np.sum}, fill_value=0).sort_values(by=['Service_Date_Start', "Portal_Invoice_Number"])
-
-        #out = pd.concat([d.append(d.sum().rename((k, ' ', ' ', 'Subtotal', ' '))) for k, d in SLICInvoice.groupby('Type')]).append(SLICInvoice.sum().rename((' ', ' ', ' ', 'Pay this Amount', '')))
-        out = SLICInvoice
-        out.rename(columns={"Type": "Invoice Type", "Portal_Invoice_Number": "Invoice",
-                            "Service_Date_Start": "Service Start", "Service_Date_End": "Service End",
-                             "Recurring_Description": "Description", "totalAmount": "Amount"}, inplace=True)
-        out.to_excel(writer, 'TopSheet-{}'.format(i))
-        worksheet = writer.sheets['TopSheet-{}'.format(i)]
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:E", 20, format2)
-        worksheet.set_column("F:F", 18, format1)
-
 
     #
     # Build a pivot table by Invoice Type
@@ -517,8 +518,8 @@ def createReport(filename, classicUsage, paasUsage):
                                          values=["totalAmount"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'totalAmount': np.sum}, margins=True, margins_name="Total", fill_value=0)
-        iaasSummary.to_excel(writer, 'IaaSSummary')
-        worksheet = writer.sheets['IaaSSummary']
+        iaasSummary.to_excel(writer, 'IaaS_Line_item_Detail')
+        worksheet = writer.sheets['IaaS_Line_item_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
@@ -526,36 +527,16 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("E:ZZ", 18, format1)
 
     #
-    # Build a pivot table of IaaS Obhect Storage
+    # Build a pivot table of Classic Object Storage
 
     if len(classicUsage)>0 and args.children:
         iaasscosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage - S3 API"]')
         iaascosSummary = pd.pivot_table(iaasscosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
-                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
-        iaascosSummary.to_excel(writer, 'IaaSObjectStorage')
-        worksheet = writer.sheets['IaaSObjectStorage']
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:A", 20, format2)
-        worksheet.set_column("B:E", 40, format2)
-        worksheet.set_column("F:ZZ", 18, format1)
-
-    #
-    # Build a pivot ttable of items that typically show on CFTS invoice at child level
-
-    if len(classicUsage)>0 and args.children:
-        childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and ' \
-                '(childParentProduct != ["Block Storage for VPC 10 IOPS/GB Gen2"] and childParentProduct != ["Block Storage for VPC 5 IOPS/GB Gen2"] ' \
-                'and childParentProduct != ["Block Storage for VPC General Purpose Tier Gen2"])' \
-                ' and childParentProduct != ["Cloud Object Storage Premium"]')
-        childSummary = pd.pivot_table(childRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
-                                         values=["childTotalRecurringCharge"],
-                                         columns=['IBM_Invoice_Month'],
-                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
-        childSummary.to_excel(writer, 'PlatformChildSummary')
-        worksheet = writer.sheets['PlatformChildSummary']
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True, margins_name="Total")
+        iaascosSummary.to_excel(writer, 'Classic_COS_Detail')
+        worksheet = writer.sheets['Classic_COS_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
@@ -570,81 +551,48 @@ def createReport(filename, classicUsage, paasUsage):
         paascosSummary = pd.pivot_table(paascosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
-                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
-        paascosSummary.to_excel(writer, 'PaaSObjectStorage')
-        worksheet = writer.sheets['PaaSObjectStorage']
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True, margins_name="Total")
+        paascosSummary.to_excel(writer, 'PaaS_COS_Detail')
+        worksheet = writer.sheets['PaaS_COS_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
-        worksheet.set_column("B:E", 40, format2)
+        worksheet.set_column("B:D", 40, format2)
+        worksheet.set_column("E:E", 55, format2)
         worksheet.set_column("F:ZZ", 18, format1)
 
 
     #
-    # Build a pivot table for Hourly VSI's with totalRecurringCharges
-    #
-    virtualServers = classicUsage.query('Category == ["Computing Instance"] and Hourly == [True]')
-    if len(virtualServers) > 0:
-        virtualServerPivot = pd.pivot_table(virtualServers, index=["Description", "OS"],
-                                values=["Hours", "totalRecurringCharge"],
-                                columns=['IBM_Invoice_Month'],
-                                aggfunc={'Description': len, 'Hours': np.sum, 'totalRecurringCharge': np.sum}, fill_value=0).\
-                                        rename(columns={"Description": 'qty', 'Hours': 'Total Hours', 'totalRecurringCharge': 'TotalRecurring'})
-        virtualServerPivot.to_excel(writer, 'HrlyVirtualServerPivot')
-        worksheet = writer.sheets['HrlyVirtualServerPivot']
+    # Build a pivot ttable of items that typically show on CFTS invoice at child level
 
-    #
-    # Build a pivot table for Monthly VSI's with totalRecurringCharges
-    #
-    monthlyVirtualServers = classicUsage.query('Category == ["Computing Instance"] and Hourly == [False]')
-    if len(monthlyVirtualServers) > 0:
-        virtualServerPivot = pd.pivot_table(monthlyVirtualServers, index=["Description", "OS"],
-                                values=["totalRecurringCharge"],
-                                columns=['IBM_Invoice_Month'],
-                                aggfunc={'Description': len, 'totalRecurringCharge': np.sum}, fill_value=0).\
-                                        rename(columns={"Description": 'qty', 'totalRecurringCharge': 'TotalRecurring'})
-        virtualServerPivot.to_excel(writer, 'MnthlyVirtualServerPivot')
-        worksheet = writer.sheets['MnthlyVirtualServerPivot']
-
-
-    #
-    # Build a pivot table for Hourly Bare Metal with totalRecurringCharges
-    #
-    bareMetalServers = classicUsage.query('Category == ["Server"]and Hourly == [True]')
-    if len(bareMetalServers) > 0:
-        bareMetalServerPivot = pd.pivot_table(bareMetalServers, index=["Description", "OS"],
-                                values=["Hours", "totalRecurringCharge"],
-                                columns=['IBM_Invoice_Month'],
-                                aggfunc={'Description': len,  'totalRecurringCharge': np.sum}, fill_value=0).\
-                                        rename(columns={"Description": 'qty', 'Hours': np.sum, 'totalRecurringCharge': 'TotalRecurring'})
-        bareMetalServerPivot.to_excel(writer, 'HrlyBaremetalServerPivot')
-        worksheet = writer.sheets['HrlyBaremetalServerPivot']
-
-    #
-    # Build a pivot table for Monthly Bare Metal with totalRecurringCharges
-    #
-    monthlyBareMetalServers = classicUsage.query('Category == ["Server"] and Hourly == [False]')
-    if len(monthlyBareMetalServers) > 0:
-        monthlyBareMetalServerPivot = pd.pivot_table(monthlyBareMetalServers, index=["Description", "OS"],
-                                values=["totalRecurringCharge"],
-                                columns=['IBM_Invoice_Month'],
-                                aggfunc={'Description': len,  'totalRecurringCharge': np.sum}, fill_value=0).\
-                                        rename(columns={"Description": 'qty', 'totalRecurringCharge': 'TotalRecurring'})
-        monthlyBareMetalServerPivot.to_excel(writer, 'MthlyBaremetalServerPivot')
-        worksheet = writer.sheets['MthlyBaremetalServerPivot']
+    if len(classicUsage)>0 and args.children:
+        childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and ' \
+                '(childParentProduct != ["Block Storage for VPC 10 IOPS/GB Gen2"] and childParentProduct != ["Block Storage for VPC 5 IOPS/GB Gen2"] ' \
+                'and childParentProduct != ["Block Storage for VPC General Purpose Tier Gen2"])' \
+                ' and childParentProduct != ["Cloud Object Storage Premium"]')
+        childSummary = pd.pivot_table(childRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
+                                         values=["childTotalRecurringCharge"],
+                                         columns=['IBM_Invoice_Month'],
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
+        childSummary.to_excel(writer, 'Platform_Detail')
+        worksheet = writer.sheets['Platform_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:A", 40, format2)
-        worksheet.set_column("B:B", 40, format2)
+        worksheet.set_column("A:A", 20, format2)
+        worksheet.set_column("B:D", 40, format2)
+        worksheet.set_column("E:E", 60, format2)
+        worksheet.set_column("F:ZZ", 18, format1)
 
   # IF PaaS credential included add usage reports
-    if len(paasUsage) >0:
+    """
+    if len(paasUsage) > 0:
         paasUsage.to_excel(writer, "PaaS_Usage")
         worksheet = writer.sheets['PaaS_Usage']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:C", 12, format2)
-        worksheet.set_column("D:E", 25, format2)
+        worksheet.set_column("D:D", 25, format2)
+        worksheet.set_column("E:E", 35, format2)
         worksheet.set_column("F:G", 18, format1)
         worksheet.set_column("H:I", 25, format2)
         worksheet.set_column("J:J", 18, format1)
@@ -660,7 +608,7 @@ def createReport(filename, classicUsage, paasUsage):
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 35, format2)
         worksheet.set_column("B:ZZ", 18, format1)
-
+        
         paasSummaryPlan = pd.pivot_table(paasUsage, index=["resource_name", "plan_name", "metric"],
                                      values=["cost"],
                                      columns=["invoiceMonth"],
@@ -672,7 +620,7 @@ def createReport(filename, classicUsage, paasUsage):
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:B", 35, format2)
         worksheet.set_column("C:ZZ", 18, format1)
-
+        """
     writer.save()
 
 def multi_part_upload(bucket_name, item_name, file_path):
@@ -920,6 +868,9 @@ if __name__ == "__main__":
 
     paasUsage = accountUsage(IC_API_KEY, IC_ACCOUNT_ID, startdate, enddate)
 
+
+    # Fix discounts on parents from adjusted children
+    classicUsage = trueupObjectStorage(classicUsage)
     # Build Exel Report
     createReport(args.output, classicUsage, paasUsage)
 
