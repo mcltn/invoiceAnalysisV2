@@ -393,7 +393,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                 logging.info("parent {} {} RecurringFee: {}".format(row["BillingItemId"], row["Description"],row["totalRecurringCharge"]))
                 logging.debug(row)
 
-                if len(item["children"]) > 0 and args.children:
+                if len(item["children"]) > 0:
                     parseChildren(row, description, item["children"])
 
     df = pd.DataFrame(data, columns=['Portal_Invoice_Date',
@@ -445,15 +445,38 @@ def trueupObjectStorage(df):
     return df
 
 
-def createReport(filename, classicUsage, paasUsage):
+def createReport(filename, classicUsage):
+    """
+    Create multiple tabs and write to excel file
+    """
+    global writer, workbook
+
     # Write dataframe to excel
-    logging.info("Creating Pivots File.")
     writer = pd.ExcelWriter(filename, engine='xlsxwriter')
     workbook = writer.book
+    logging.info("Creating {}.".format(filename))
 
-    #
-    # Write detail tab
-    #
+    # combine one time amounts and total recurring charge in datafrane
+    classicUsage["totalAmount"] = classicUsage["totalOneTimeAmount"] + classicUsage["totalRecurringCharge"]
+
+    # create pivots for various tabs
+    createDetailTab(classicUsage)
+    createInvoiceSummary(classicUsage)
+    createCategoorySummary(classicUsage)
+    createPlatformDetail(classicUsage)
+    createIaaSLineItemDetail(classicUsage)
+    createClassicCOS(classicUsage)
+    createPaaSCOS(classicUsage)
+
+    writer.save()
+
+    return
+
+def createDetailTab(classicUsage):
+    """
+    Write detail tab to excel
+    """
+    logging.info("Creating detail tab.")
     classicUsage.to_excel(writer, 'Detail')
     usdollar = workbook.add_format({'num_format': '$#,##0.00'})
     format2 = workbook.add_format({'align': 'left'})
@@ -464,17 +487,15 @@ def createReport(filename, classicUsage, paasUsage):
     worksheet.set_column('W:W', 18, format2 )
     totalrows,totalcols=classicUsage.shape
     worksheet.autofilter(0,0,totalrows,totalcols)
+    return
 
-    #
-    # Map Portal Invoices to SLIC Invoices / Create Top Sheet per SLIC month
-    #
+def createInvoiceSummary(classicUsage):
+    """
+    Map Portal Invoices to SLIC Invoices / Create Top Sheet per SLIC month
+    """
 
-    classicUsage["totalAmount"] = classicUsage["totalOneTimeAmount"] + classicUsage["totalRecurringCharge"]
-
-    #
-    # Build a pivot table by Invoice Type
-    #
     if len(classicUsage)>0:
+        logging.info("Creating InvoiceSummary Tab.")
         parentRecords= classicUsage.query('RecordType == ["Parent"]')
         invoiceSummary = pd.pivot_table(parentRecords, index=["Type", "Category_Group", "Category"],
                                         values=["totalAmount"],
@@ -488,12 +509,16 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("A:A", 20, format2)
         worksheet.set_column("B:B", 40, format2)
         worksheet.set_column("C:ZZ", 18, format1)
+    return
 
-
-    #
-    # Build a pivot table by Category with totalRecurringCharges
+def createCategoorySummary(classicUsage):
+    """
+    Build a pivot table by Category with totalRecurringCharges
+    tab name CategorySummary
+    """
 
     if len(classicUsage)>0:
+        logging.info("Creating CategorySummary Tab.")
         parentRecords = classicUsage.query('RecordType == ["Parent"]')
         categorySummary = pd.pivot_table(parentRecords, index=["Type", "Category_Group", "Category", "Description"],
                                          values=["totalAmount"],
@@ -506,11 +531,15 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("A:A", 20, format2)
         worksheet.set_column("B:D", 40, format2)
         worksheet.set_column("E:ZZ", 18, format1)
+    return
 
-    #
-    # Build a pivot table for items that show on CFTS IaaS not at children level
+def createIaaSLineItemDetail(classicUsage):
+    """
+    Build a pivot table for items that show on CFTS IaaS charges not included in the PaaS children detail
+    """
 
-    if len(classicUsage)>0 and args.children:
+    if len(classicUsage) > 0:
+        logging.info("Creating IaaS_Line_item_Detail Tab.")
         iaasRecords = classicUsage.query('RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"] '\
                                          'or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
                                          'or Description == ["Block Storage for VPC General Purpose Tier Gen2"])')
@@ -525,11 +554,15 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("A:A", 20, format2)
         worksheet.set_column("B:D", 40, format2)
         worksheet.set_column("E:ZZ", 18, format1)
+    return
 
-    #
-    # Build a pivot table of Classic Object Storage
+def createClassicCOS(classicUsage):
+    """
+    Build a pivot table of Classic Object Storage that displays charges appearing on CFTS invoice
+    """
 
-    if len(classicUsage)>0 and args.children:
+    if len(classicUsage) > 0:
+        logging.info("Creating Classic_COS_Detail Tab.")
         iaasscosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage - S3 API"]')
         iaascosSummary = pd.pivot_table(iaasscosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
@@ -542,11 +575,15 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("A:A", 20, format2)
         worksheet.set_column("B:E", 40, format2)
         worksheet.set_column("F:ZZ", 18, format1)
+    return
 
-    #
-    # Build a pivot table of PaaS object storage
+def createPaaSCOS(classicUsage):
+    """
+    Build a pivot table of PaaS object storage
+    """
 
-    if len(classicUsage)>0 and args.children:
+    if len(classicUsage) > 0:
+        logging.info("Creating PaaS_COS_Detail Tab.")
         paascosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage Premium"]')
         paascosSummary = pd.pivot_table(paascosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
@@ -560,12 +597,15 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("B:D", 40, format2)
         worksheet.set_column("E:E", 55, format2)
         worksheet.set_column("F:ZZ", 18, format1)
+    return
 
+def createPlatformDetail(classicUsage):
+    """
+    Build a pivot table of items that typically show on CFTS invoice at child level
+    """
 
-    #
-    # Build a pivot ttable of items that typically show on CFTS invoice at child level
-
-    if len(classicUsage)>0 and args.children:
+    if len(classicUsage) > 0:
+        logging.info("Creating Platform Detail Tab.")
         childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and ' \
                 '(childParentProduct != ["Block Storage for VPC 10 IOPS/GB Gen2"] and childParentProduct != ["Block Storage for VPC 5 IOPS/GB Gen2"] ' \
                 'and childParentProduct != ["Block Storage for VPC General Purpose Tier Gen2"])' \
@@ -582,46 +622,7 @@ def createReport(filename, classicUsage, paasUsage):
         worksheet.set_column("B:D", 40, format2)
         worksheet.set_column("E:E", 60, format2)
         worksheet.set_column("F:ZZ", 18, format1)
-
-  # IF PaaS credential included add usage reports
-    """
-    if len(paasUsage) > 0:
-        paasUsage.to_excel(writer, "PaaS_Usage")
-        worksheet = writer.sheets['PaaS_Usage']
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:C", 12, format2)
-        worksheet.set_column("D:D", 25, format2)
-        worksheet.set_column("E:E", 35, format2)
-        worksheet.set_column("F:G", 18, format1)
-        worksheet.set_column("H:I", 25, format2)
-        worksheet.set_column("J:J", 18, format1)
-
-        paasSummary = pd.pivot_table(paasUsage, index=["resource_name"],
-                                        values=["cost"],
-                                        columns=["invoiceMonth"],
-                                        aggfunc={'cost': np.sum, }, margins=True, margins_name="Total",
-                                        fill_value=0)
-        paasSummary.to_excel(writer, 'PaaS_Summary')
-        worksheet = writer.sheets['PaaS_Summary']
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:A", 35, format2)
-        worksheet.set_column("B:ZZ", 18, format1)
-        
-        paasSummaryPlan = pd.pivot_table(paasUsage, index=["resource_name", "plan_name", "metric"],
-                                     values=["cost"],
-                                     columns=["invoiceMonth"],
-                                     aggfunc={'cost': np.sum, }, margins=True, margins_name="Total",
-                                     fill_value=0)
-        paasSummaryPlan.to_excel(writer, 'PaaS_Plan_Summary')
-        worksheet = writer.sheets['PaaS_Plan_Summary']
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:B", 35, format2)
-        worksheet.set_column("C:ZZ", 18, format1)
-        """
-    writer.save()
+    return
 
 def multi_part_upload(bucket_name, item_name, file_path):
     try:
@@ -716,91 +717,6 @@ def sendEmail(startdate, enddate, sendGridTo, sendGridFrom, sendGridSubject, sen
         logging.error("Email Send Error, status code = %s." % e.to_dict)
     return
 
-def accountUsage(IC_API_KEY, IC_ACCOUNT_ID, startdate, enddate):
-    ##########################################################
-    ## Get Usage for Account matching recuring invoice periods
-    ##########################################################
-
-    try:
-        authenticator = IAMAuthenticator(IC_API_KEY)
-    except ApiException as e:
-        logging.error("API exception {}.".format(str(e)))
-        error = ("API exception {}.".format(str(e)))
-        return accountUsage, error
-    try:
-        usage_reports_service = UsageReportsV4(authenticator=authenticator)
-    except ApiException as e:
-        logging.error("API exception {}.".format(str(e)))
-        error = ("API exception {}.".format(str(e)))
-        return accountUsage, error
-
-    # PaaS consumption is delayed by one recurring invoice (ie April usage on June 1 recurring invoice)
-    paasStart = startdate - relativedelta(months=1)
-    paasEnd = enddate - relativedelta(months=2)
-
-    while paasStart <= paasEnd + relativedelta(days=1):
-        usageMonth = paasStart.strftime('%Y-%m')
-        recurringMonth = paasStart + relativedelta(months=2)
-        recurringMonth = recurringMonth.strftime('%Y-%m')
-        logging.info("Retrieving PaaS Usage from {}.".format(usageMonth))
-        try:
-            usage = usage_reports_service.get_account_usage(
-                account_id=IC_ACCOUNT_ID,
-                billingmonth=usageMonth,
-                names=True
-            ).get_result()
-        except ApiException as e:
-            logging.error("API exception {}.".format(str(e)))
-            quit()
-        paasStart += relativedelta(months=1)
-        logging.debug(usage)
-        data = []
-        for r in usage['resources']:
-            for p in r['plans']:
-                for u in p['usage']:
-                    row = {
-                        'usageMonth': usageMonth,
-                        'invoiceMonth': recurringMonth,
-                        'resource_id': r["resource_id"],
-                        'resource_name': r['resource_name'],
-                        'billable_cost': r["billable_cost"],
-                        'billable_rated_cost': r["billable_rated_cost"],
-                        'non_billable_cost': r["non_billable_cost"],
-                        'non_billable_rated_cost': r["non_billable_rated_cost"],
-                        'plan_name': p["plan_name"],
-                        'billable': p["billable"],
-                        'metric': u["metric"],
-                        'unit': u["unit"],
-                        'quantity': u["quantity"],
-                        'cost': u["cost"],
-                        'rated_cost': u["rated_cost"],
-                    }
-                    if len(u["discounts"])>0:
-                        row["discount"]= u["discounts"][0]["discount"]
-                    else:
-                        row["discount"] = 0
-                    data.append(row.copy())
-
-    accountUsage = pd.DataFrame(data, columns=['usageMonth',
-                                         'invoiceMonth',
-                                         'resource_id',
-                                         'resource_name',
-                                         'billable_cost',
-                                         'billable_rated_cost',
-                                         'non_billable_cost',
-                                         'non_billable_rated_cost',
-                                         'plan_name',
-                                         'billable',
-                                         'metric',
-                                         'unit',
-                                         'quantity',
-                                         'cost',
-                                         'rated_cost',
-                                         'discount'
-                                         ]
-                                )
-    return accountUsage
-
 if __name__ == "__main__":
     setup_logging()
     parser = argparse.ArgumentParser(
@@ -817,10 +733,8 @@ if __name__ == "__main__":
     parser.add_argument("--sendGridTo", default=os.environ.get('sendGridTo', None), help="SendGrid comma deliminated list of emails to send output to.")
     parser.add_argument("--sendGridFrom", default=os.environ.get('sendGridFrom', None), help="Sendgrid from email to send output from.")
     parser.add_argument("--sendGridSubject", default=os.environ.get('sendGridSubject', None), help="SendGrid email subject for output email")
-    parser.add_argument("--output", default=os.environ.get('output', 'invoice-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
+    parser.add_argument("--output", default=os.environ.get('output','invoice-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
     parser.add_argument("--SL_PRIVATE", default=False, action=argparse.BooleanOptionalAction, help="Use IBM Cloud Classic Private API Endpoint")
-    parser.add_argument("--children", default=False, action=argparse.BooleanOptionalAction,
-                        help="Store children records and create additional pivots based on them.")
 
     args = parser.parse_args()
 
@@ -863,16 +777,12 @@ if __name__ == "__main__":
     #  Retrieve Invoices from classic
     classicUsage = getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate)
 
-    # Retrieve Usage from IBM Cloud
-    IC_ACCOUNT_ID = getAccountId(IC_API_KEY)
-
-    paasUsage = accountUsage(IC_API_KEY, IC_ACCOUNT_ID, startdate, enddate)
-
-
-    # Fix discounts on parents from adjusted children
+    """"
+    Build Exel Report Report with Charges
+    but first Recalculate parents from adjusted Object Storage children (for Zenfolio)
+    """
     classicUsage = trueupObjectStorage(classicUsage)
-    # Build Exel Report
-    createReport(args.output, classicUsage, paasUsage)
+    createReport(args.output, classicUsage)
 
     if args.sendGridApi != None:
         sendEmail(startdate, enddate, args.sendGridTo, args.sendGridFrom, args.sendGridSubject, args.sendGridApi, args.output)
