@@ -47,7 +47,6 @@ optional arguments:
   --output OUTPUT       Filename Excel output file. (including extension of .xlsx)
   --SL_PRIVATE, --no-SL_PRIVATE
                         Use IBM Cloud Classic Private API Endpoint (default: False)
-╭
 
 """
 __author__ = 'jonhall'
@@ -188,7 +187,9 @@ def parseChildren(row, parentDescription, children):
     return
 
 def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
-    # GET InvoiceDetail
+    """
+    Read invoice top level detail from range of invoices
+    """
     global client, data
     # Create dataframe to work with for classic infrastructure invoices
     data = []
@@ -430,18 +431,21 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
 
     return df
 
-def trueupObjectStorage(df):
+def fixParentRecordsObjectStorage(df):
     """
-    Trueup parent item for Object Storage discoubnt
+    Re-calculate parent recurrigncharge to match sum of adjusted children records for each month in report.
     """
-    storageLayer = df[df["Category_Group"] == "StorageLayer"]
-    parents = storageLayer[storageLayer["RecordType"] == "Parent"]
-    for row in parents.itertuples():
-        index = row[0]
-        billingItemId = row[9]
-        # calculate adjusted parent recurring charge from sum of children already adjusted
-        sum = df.query('BillingItemId == @billingItemId and RecordType == ["Child"]')["childTotalRecurringCharge"].sum()
-        df.at[index, 'totalRecurringCharge'] = sum
+
+    months = df.IBM_Invoice_Month.unique()
+    for i in months:
+        parents = df.query('Category_Group == "StorageLayer" and IBM_Invoice_Month == @i and RecordType == "Parent"')
+        for row in parents.itertuples():
+            index = row[0]
+            billingItemId = row[9]
+            # calculate adjusted parent recurring charge from sum of children already adjusted
+            sum = df.query('BillingItemId == @billingItemId and RecordType == ["Child"] and IBM_Invoice_Month == @i')["childTotalRecurringCharge"].sum()
+            df.at[index, 'totalRecurringCharge'] = sum
+    # return adjusted dataframe
     return df
 
 
@@ -455,6 +459,9 @@ def createReport(filename, classicUsage):
     writer = pd.ExcelWriter(filename, engine='xlsxwriter')
     workbook = writer.book
     logging.info("Creating {}.".format(filename))
+
+    # re-calculate Zenfolio top level parent items from children for classic object storage
+    classicUsage = fixParentRecordsObjectStorage(classicUsage)
 
     # combine one time amounts and total recurring charge in datafrane
     classicUsage["totalAmount"] = classicUsage["totalOneTimeAmount"] + classicUsage["totalRecurringCharge"]
@@ -651,33 +658,7 @@ def multi_part_upload(bucket_name, item_name, file_path):
         logging.error("CLIENT ERROR: {0}".format(be))
     except Exception as e:
         logging.error("Unable to complete multi-part upload: {0}".format(e))
-
-def getAccountId(IC_API_KEY):
-    ##########################################################
-    ## Get Account from the passed API Key
-    ##########################################################
-
-    logging.info("Retrieving IBM Cloud Account ID for this ApiKey.")
-    try:
-        authenticator = IAMAuthenticator(IC_API_KEY)
-    except ApiException as e:
-        logging.error("API exception {}.".format(str(e)))
-        quit()
-    try:
-        iam_identity_service = IamIdentityV1(authenticator=authenticator)
-    except ApiException as e:
-        logging.error("API exception {}.".format(str(e)))
-        quit()
-
-    try:
-        api_key = iam_identity_service.get_api_keys_details(
-          iam_api_key=IC_API_KEY
-        ).get_result()
-    except ApiException as e:
-        logging.error("API exception {}.".format(str(e)))
-        quit()
-
-    return api_key["account_id"]
+    return
 
 def sendEmail(startdate, enddate, sendGridTo, sendGridFrom, sendGridSubject, sendGridApi, outputname):
     # Send output to email distributionlist via SendGrid
@@ -779,9 +760,7 @@ if __name__ == "__main__":
 
     """"
     Build Exel Report Report with Charges
-    but first Recalculate parents from adjusted Object Storage children (for Zenfolio)
     """
-    classicUsage = trueupObjectStorage(classicUsage)
     createReport(args.output, classicUsage)
 
     if args.sendGridApi != None:
