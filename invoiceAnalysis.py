@@ -372,6 +372,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                     NewEstimatedMonthly = dailyAmount * daysInMonth
 
                 recordType = "Parent"
+
                 # Append record to dataframe
                 row = {'Portal_Invoice_Date': invoiceDate.strftime("%Y-%m-%d"),
                        'Portal_Invoice_Time': invoiceDate.strftime("%H:%M:%S%z"),
@@ -398,7 +399,8 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                        'InvoiceTotal': float(invoiceTotalAmount),
                        'InvoiceRecurring': float(invoiceTotalRecurringAmount),
                        'Type': invoiceType,
-                       'Recurring_Description': recurringDesc
+                       'Recurring_Description': recurringDesc,
+                       'childTotalRecurringCharge': 0
                         }
                 # write parent record
                 data.append(row.copy())
@@ -477,7 +479,7 @@ def createReport(filename, classicUsage):
     classicUsage = fixParentRecordsObjectStorage(classicUsage)
 
     # combine one time amounts and total recurring charge in datafrane
-    classicUsage["totalAmount"] = classicUsage["totalOneTimeAmount"] + classicUsage["totalRecurringCharge"]
+    classicUsage["totalAmount"] = classicUsage["totalOneTimeAmount"] + classicUsage["totalRecurringCharge"] + classicUsage["childTotalRecurringCharge"]
 
     # create pivots for various tabs
     createDetailTab(classicUsage)
@@ -725,7 +727,7 @@ if __name__ == "__main__":
     parser.add_argument("--sendGridTo", default=os.environ.get('sendGridTo', None), help="SendGrid comma deliminated list of emails to send output to.")
     parser.add_argument("--sendGridFrom", default=os.environ.get('sendGridFrom', None), help="Sendgrid from email to send output from.")
     parser.add_argument("--sendGridSubject", default=os.environ.get('sendGridSubject', None), help="SendGrid email subject for output email")
-    parser.add_argument("--output", default=os.environ.get('output','invoice-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
+    parser.add_argument("--output", default=os.environ.get('output', 'invoice-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
     parser.add_argument("--SL_PRIVATE", default=False, action=argparse.BooleanOptionalAction, help="Use IBM Cloud Classic Private API Endpoint")
 
     args = parser.parse_args()
