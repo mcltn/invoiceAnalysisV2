@@ -179,9 +179,20 @@ def parseChildren(row, parentDescription, children):
                     (row["childUsage"] * 0.75 * 0.00099) + (row["childUsage"] * 0.25 * 0.0051), 2)
                 logging.info("Recalculating Zenfolio Discounted usage for {} GB average COS usage at {}.".format(row["childUsage"],row[
                                                                                                          "childTotalRecurringCharge"]))
+
+            # Get product attributes for PaaS Product Code and DIV
+            row["INV_PRODID"] = ""
+            row["INV_DIV"] = ""
+            if "attributes" in child["product"]:
+                for attr in child["product"]["attributes"]:
+                    if attr["attributeType"]["keyName"] == "BLUEMIX_PART_NUMBER":
+                        row["INV_PRODID"] = attr["value"]
+                    if attr["attributeType"]["keyName"] == "BLUEMIX_SERVICE_PLAN_DIVISION":
+                        row["INV_DIV"] = attr["value"]
+
             # write child record
             data.append(row.copy())
-            logging.info("child {} {} RecurringFee: {}".format(row["childBillingItemId"], row["Description"],
+            logging.info("child {} {} ({}) {} RecurringFee: {}".format(row["childBillingItemId"], row["INV_PRODID"], row["INV_DIV"], row["Description"],
                                                                row["childTotalRecurringCharge"]))
             logging.debug(row)
     return
@@ -240,9 +251,9 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
 
             try:
                 Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
-                                    mask="id, billingItemId, categoryCode, category, category.group, hourlyFlag, hostName, domainName, product.description, product.taxCategory," \
-                                         "createDate, totalRecurringAmount, totalOneTimeAmount, usageChargeFlag, hourlyRecurringFee," \
-                                         "children.billingItemId, children.description, children.category.group, children.categoryCode, children.product, children.product.taxCategory, children.recurringFee")
+                                    mask="id, billingItemId,categoryCode,category,category.group, hourlyFlag,hostName, domainName,product.description,product.taxCategory," \
+                                         "createDate,totalRecurringAmount,totalOneTimeAmount,usageChargeFlag,hourlyRecurringFee,children.billingItemId,children.description,children.category.group," \
+                                         "children.categoryCode,children.product,children.product.taxCategory,children.product.attributes,children.product.attributes.attributeType,children.recurringFee")
             except SoftLayer.SoftLayerAPIError as e:
                 logging.error("Billing_Invoice::getInvoiceTopLevelItems: %s, %s" % (e.faultCode, e.faultString))
                 quit()
@@ -426,7 +437,9 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                                'childBillingItemId',
                                'childParentProduct',
                                'childUsage',
-                               'childTotalRecurringCharge'
+                               'childTotalRecurringCharge',
+                               'INV_PRODID',
+                               'INV_DIV'
                                      ])
 
     return df
@@ -547,9 +560,9 @@ def createIaaSLineItemDetail(classicUsage):
 
     if len(classicUsage) > 0:
         logging.info("Creating IaaS_Line_item_Detail Tab.")
-        iaasRecords = classicUsage.query('RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"] '\
+        iaasRecords = classicUsage.query('(RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID == [""]) or (RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"] '\
                                          'or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
-                                         'or Description == ["Block Storage for VPC General Purpose Tier Gen2"])')
+                                         'or Description == ["Block Storage for VPC General Purpose Tier Gen2"]))')
         iaasSummary = pd.pivot_table(iaasRecords, index=["Type", "Category_Group", "Category", "Description"],
                                          values=["totalAmount"],
                                          columns=['IBM_Invoice_Month'],
@@ -592,7 +605,7 @@ def createPaaSCOS(classicUsage):
     if len(classicUsage) > 0:
         logging.info("Creating PaaS_COS_Detail Tab.")
         paascosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage Premium"]')
-        paascosSummary = pd.pivot_table(paascosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
+        paascosSummary = pd.pivot_table(paascosRecords, index=["Type", "INV_PRODID", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True, margins_name="Total")
@@ -613,22 +626,20 @@ def createPlatformDetail(classicUsage):
 
     if len(classicUsage) > 0:
         logging.info("Creating Platform Detail Tab.")
-        childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and ' \
-                '(childParentProduct != ["Block Storage for VPC 10 IOPS/GB Gen2"] and childParentProduct != ["Block Storage for VPC 5 IOPS/GB Gen2"] ' \
-                'and childParentProduct != ["Block Storage for VPC General Purpose Tier Gen2"])' \
-                ' and childParentProduct != ["Cloud Object Storage Premium"]')
-        childSummary = pd.pivot_table(childRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
+        childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID != [""]'\
+                                          ' and INV_PRODID != ["D1VG4LL"] and INV_DIV != ["U7"]')
+        childSummary = pd.pivot_table(childRecords, index=["INV_PRODID", "childParentProduct", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
-                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, margins=True,  margins_name="Total", fill_value=0)
         childSummary.to_excel(writer, 'Platform_Detail')
         worksheet = writer.sheets['Platform_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
-        worksheet.set_column("B:D", 40, format2)
-        worksheet.set_column("E:E", 60, format2)
-        worksheet.set_column("F:ZZ", 18, format1)
+        worksheet.set_column("B:B", 40, format2)
+        worksheet.set_column("C:C", 60, format2)
+        worksheet.set_column("D:ZZ", 18, format1)
     return
 
 def multi_part_upload(bucket_name, item_name, file_path):
