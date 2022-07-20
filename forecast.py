@@ -16,37 +16,6 @@
 usage: invoiceAnalysis.py [-h] [-k apikey] [-s YYYY-MM] [-e YYYY-MM] [-m MONTHS] [--COS_APIKEY COS_APIKEY] [--COS_ENDPOINT COS_ENDPOINT] [--COS_INSTANCE_CRN COS_INSTANCE_CRN] [--COS_BUCKET COS_BUCKET] [--sendGridApi SENDGRIDAPI]      ─╯
                           [--sendGridTo SENDGRIDTO] [--sendGridFrom SENDGRIDFROM] [--sendGridSubject SENDGRIDSUBJECT] [--output OUTPUT] [--SL_PRIVATE | --no-SL_PRIVATE]
 
-Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and corresponding lsPaaS Consumption.
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -k apikey, --IC_API_KEY apikey
-                        IBM Cloud API Key
-  -s YYYY-MM, --startdate YYYY-MM
-                        Start Year & Month in format YYYY-MM
-  -e YYYY-MM, --enddate YYYY-MM
-                        End Year & Month in format YYYY-MM
-  -m MONTHS, --months MONTHS
-                        Number of months including last full month to include in report.
-  --COS_APIKEY COS_APIKEY
-                        COS apikey to use for Object Storage.
-  --COS_ENDPOINT COS_ENDPOINT
-                        COS endpoint to use for Object Storage.
-  --COS_INSTANCE_CRN COS_INSTANCE_CRN
-                        COS Instance CRN to use for file upload.
-  --COS_BUCKET COS_BUCKET
-                        COS Bucket name to use for file upload.
-  --sendGridApi SENDGRIDAPI
-                        SendGrid ApiKey used to email output.
-  --sendGridTo SENDGRIDTO
-                        SendGrid comma deliminated list of emails to send output to.
-  --sendGridFrom SENDGRIDFROM
-                        Sendgrid from email to send output from.
-  --sendGridSubject SENDGRIDSUBJECT
-                        SendGrid email subject for output email
-  --output OUTPUT       Filename Excel output file. (including extension of .xlsx)
-  --SL_PRIVATE, --no-SL_PRIVATE
-                        Use IBM Cloud Classic Private API Endpoint (default: False)
 
 """
 __author__ = 'jonhall'
@@ -123,16 +92,6 @@ def createEmployeeClient(end_point_employee, employee_user, passw, token):
 def getObjectStorage():
     # GET LIST OF PORTAL INVOICES BETWEEN DATES USING CENTRAL (DALLAS) TIME
 
-    global client, data
-    # Create dataframe to work with for classic infrastructure invoices
-    data = []
-
-    dallas = tz.gettz('US/Central')
-
-    # Create Classic infra API client
-    client = SoftLayer.Client(username="apikey", api_key=IC_API_KEY, endpoint_url=SL_ENDPOINT)
-
-    dallas=tz.gettz('US/Central')
     logging.info("Getting current storage usage.")
     try:
         storage = client['SoftLayer_Network_Storage_Hub_Cleversafe_Account'].getAllObjects(id=37573109)
@@ -218,6 +177,8 @@ if __name__ == "__main__":
     parser.add_argument("-k", "--IC_API_KEY", default=os.environ.get('IC_API_KEY', None), metavar="apikey", help="IBM Cloud API Key")
     parser.add_argument("-u", "--username", default=os.environ.get('ims_username', None), metavar="username", help="IMS Userid")
     parser.add_argument("-p", "--password", default=os.environ.get('ims_password', None), metavar="password", help="IMS Password")
+    parser.add_argument("-a", "--account", default=os.environ.get('ims_account', None), metavar="account",
+                        help="IMS Account")
     parser.add_argument("-y", "--yubikey", default=os.environ.get('yubikey', None), metavar="yubikey", help="IMS Yubi Key")
     parser.add_argument("--COS_APIKEY", default=os.environ.get('COS_APIKEY', None), help="COS apikey to use for Object Storage.")
     parser.add_argument("--COS_ENDPOINT", default=os.environ.get('COS_ENDPOINT', None), help="COS endpoint to use for Object Storage.")
@@ -231,18 +192,30 @@ if __name__ == "__main__":
     parser.add_argument("--SL_PRIVATE", default=False, action=argparse.BooleanOptionalAction, help="Use IBM Cloud Classic Private API Endpoint")
     args = parser.parse_args()
 
-    if args.IC_API_KEY == None:
-        logging.error("You must provide either IBM Cloud ApiKey")
-        quit()
+    if args.IC_API_KEY != "force":
+        if args.username == None or args.password == None or args.yubikey == None or args.account == None:
+            logging.error("You must provide either IBM Cloud ApiKey or Internal Employee credentials & IMS account.")
+            quit()
+        else:
+            logging.info("Using Internal endpoint and employee credentials.")
+            ims_username = args.username
+            ims_password = args.password
+            ims_yubikey = args.yubikey
+            ims_account = args.account
+            SL_ENDPOINT = "http://internal.applb.dal10.softlayer.local/v3.1/internal/xmlrpc"
+            client = createEmployeeClient(SL_ENDPOINT, ims_username, ims_password, ims_yubikey)
     else:
         logging.info("Using IBM Cloud Account API Key.")
         IC_API_KEY = args.IC_API_KEY
+        ims_account = None
 
-    # Change endpoint to private Endpoint if command line open chosen
-    if args.SL_PRIVATE:
-        SL_ENDPOINT = "https://api.service.softlayer.com/xmlrpc/v3.1"
-    else:
-        SL_ENDPOINT = "https://api.softlayer.com/xmlrpc/v3.1"
+        # Change endpoint to private Endpoint if command line open chosen
+        if args.SL_PRIVATE:
+            SL_ENDPOINT = "https://api.service.softlayer.com/xmlrpc/v3.1"
+        else:
+            SL_ENDPOINT = "https://api.softlayer.com/xmlrpc/v3.1"
+        # Create Classic infra API client
+        client = SoftLayer.Client(username="apikey", api_key=IC_API_KEY, endpoint_url=SL_ENDPOINT)
 
 
     storage = getObjectStorage()
