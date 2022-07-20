@@ -86,7 +86,7 @@ def createEmployeeClient(end_point_employee, employee_user, passw, token):
     employee = client_noauth['SoftLayer_User_Employee']
     result = employee.performExternalAuthentication(employee_user, passw, token)
     # Save result['hash'] somewhere to not have to login for every API request
-    client_employee = SoftLayer.employee_client(username=result['userId'], auth=result['hash'], endpoint_url=end_point_employee)
+    client_employee = SoftLayer.employee_client(username=result["userId"], auth=result['hash'], endpoint_url=end_point_employee)
     return client_employee
 
 def getObjectStorage():
@@ -94,8 +94,8 @@ def getObjectStorage():
 
     logging.info("Getting current storage usage.")
     try:
-        storage = client['SoftLayer_Network_Storage_Hub_Cleversafe_Account'].getAllObjects(id=37573109)
-
+        #storage = client['SoftLayer_Network_Storage_Hub_Cleversafe_Account'].getAllObjects(id=37573109)
+        storage = client['Account'].getAccountStatus(id=1410521)
     except SoftLayer.SoftLayerAPIError as e:
         logging.error("Account::getInvoices: %s, %s" % (e.faultCode, e.faultString))
         quit()
