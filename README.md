@@ -1,5 +1,5 @@
-# IBM Cloud Classic Infrastructure Invoice Analysis Report
-*invoiceAnalysis.py* collects IBM Cloud Classic Infrastructure NEW, RECURRING, and CREDIT invoices and PaaS Usage between months specified in the parameters consolidates the data into an Excel worksheet for billing and usage analysis. 
+# IBM Cloud Classic Infrastructure Invoice Analysis Report for Zenfolio
+*invoiceAnalysis.py* collects IBM Cloud Classic Infrastructure NEW, RECURRING, and CREDIT invoices including PaaS Usage between months specified in the parameters consolidates the data into an Excel worksheet for billing and usage analysis. 
 In addition to consolidation of the detailed data,  pivot tables are created in Excel tabs to assist with understanding account usage.
 
 ### Required Files
