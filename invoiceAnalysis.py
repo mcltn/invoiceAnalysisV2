@@ -50,7 +50,7 @@ optional arguments:
 
 """
 __author__ = 'jonhall'
-import SoftLayer, os, logging, logging.config, json, calendar, os.path, argparse, pytz, base64, re
+import SoftLayer, os, logging, logging.config, json, calendar, os.path, argparse, base64, re
 import pandas as pd
 import numpy as np
 from sendgrid import SendGridAPIClient
@@ -63,9 +63,6 @@ from calendar import monthrange
 from dateutil.relativedelta import relativedelta
 import ibm_boto3
 from ibm_botocore.client import Config, ClientError
-from ibm_platform_services import IamIdentityV1, UsageReportsV4
-from ibm_cloud_sdk_core import ApiException
-from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 
 def setup_logging(default_path='logging.json', default_level=logging.info, env_key='LOG_CFG'):
     # read logging.json for log parameters to be ued by script
@@ -192,7 +189,7 @@ def parseChildren(row, parentDescription, children):
 
             # write child record
             data.append(row.copy())
-            logging.info("child {} {} ({}) {} RecurringFee: {}".format(row["childBillingItemId"], row["INV_PRODID"], row["INV_DIV"], row["Description"],
+            logging.info("child {} {} {} RecurringFee: {}".format(row["childBillingItemId"], row["INV_PRODID"], row["Description"],
                                                                row["childTotalRecurringCharge"]))
             logging.debug(row)
     return
@@ -485,10 +482,10 @@ def createReport(filename, classicUsage):
     createDetailTab(classicUsage)
     createInvoiceSummary(classicUsage)
     createCategoorySummary(classicUsage)
-    createPlatformDetail(classicUsage)
-    createIaaSLineItemDetail(classicUsage)
+    createIaaSInvoiceDetail(classicUsage)
+    createClassicCombined(classicUsage)
     createClassicCOS(classicUsage)
-    createPaaSCOS(classicUsage)
+    createPaaSInvoiceDetail(classicUsage)
 
     writer.save()
 
@@ -555,7 +552,7 @@ def createCategoorySummary(classicUsage):
         worksheet.set_column("E:ZZ", 18, format1)
     return
 
-def createIaaSLineItemDetail(classicUsage):
+def createClassicCombined(classicUsage):
     """
     Build a pivot table for items that show on CFTS IaaS charges not included in the PaaS children detail
     """
@@ -569,8 +566,8 @@ def createIaaSLineItemDetail(classicUsage):
                                          values=["totalAmount"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'totalAmount': np.sum}, margins=True, margins_name="Total", fill_value=0)
-        iaasSummary.to_excel(writer, 'IaaS_Line_item_Detail')
-        worksheet = writer.sheets['IaaS_Line_item_Detail']
+        iaasSummary.to_excel(writer, 'Classic_IaaS_Combined')
+        worksheet = writer.sheets['Classic_IaaS_Combined']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
@@ -590,8 +587,8 @@ def createClassicCOS(classicUsage):
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True, margins_name="Total")
-        iaascosSummary.to_excel(writer, 'Classic_COS_Detail')
-        worksheet = writer.sheets['Classic_COS_Detail']
+        iaascosSummary.to_excel(writer, 'Classic_COS_Custom')
+        worksheet = writer.sheets['Classic_COS_Custom']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
@@ -599,48 +596,62 @@ def createClassicCOS(classicUsage):
         worksheet.set_column("F:ZZ", 18, format1)
     return
 
-def createPaaSCOS(classicUsage):
+def createPaaSInvoiceDetail(classicUsage):
     """
     Build a pivot table of PaaS object storage
     """
 
     if len(classicUsage) > 0:
         logging.info("Creating PaaS_COS_Detail Tab.")
-        paascosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage Premium"]')
-        paascosSummary = pd.pivot_table(paascosRecords, index=["Type", "INV_PRODID", "childParentProduct", "Category", "Description"],
+        paasCodes = ["D01J5ZX","D01J6ZX","D01J7ZX","D01J8ZX","D01J9ZX","D01JAZX","D01JBZX","D01NGZX","D01NHZX","D01NIZX","D01NJZX","D022FZX","D1VCRLL","D1VCSLL",
+                     "D1VCTLL","D1VCULL","D1VCVLL","D1VCWLL","D1VCXLL","D1VCYLL","D1VCZLL","D1VD0LL","D1VD1LL","D1VD2LL","D1VD3LL","D1VD4LL","D1VD5LL","D1VD6LL",
+                     "D1VD7LL","D1VD8LL","D1VD9LL","D1VDALL","D1YJMLL","D20Y7LL"]
+
+        paascosRecords = classicUsage.query('RecordType == ["Child"] and INV_PRODID in @paasCodes')
+        paascosSummary = pd.pivot_table(paascosRecords, index=["INV_PRODID", "childParentProduct", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True, margins_name="Total")
-        paascosSummary.to_excel(writer, 'PaaS_COS_Detail')
-        worksheet = writer.sheets['PaaS_COS_Detail']
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:A", 20, format2)
-        worksheet.set_column("B:D", 40, format2)
-        worksheet.set_column("E:E", 55, format2)
-        worksheet.set_column("F:ZZ", 18, format1)
-    return
-
-def createPlatformDetail(classicUsage):
-    """
-    Build a pivot table of items that typically show on CFTS invoice at child level
-    """
-
-    if len(classicUsage) > 0:
-        logging.info("Creating Platform Detail Tab.")
-        childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID != [""]'\
-                                          ' and INV_PRODID != ["D1VG4LL"] and INV_DIV != ["U7"]')
-        childSummary = pd.pivot_table(childRecords, index=["INV_PRODID", "childParentProduct", "Description"],
-                                         values=["childTotalRecurringCharge"],
-                                         columns=['IBM_Invoice_Month'],
-                                         aggfunc={'childTotalRecurringCharge': np.sum}, margins=True,  margins_name="Total", fill_value=0)
-        childSummary.to_excel(writer, 'Platform_Detail')
-        worksheet = writer.sheets['Platform_Detail']
+        paascosSummary.to_excel(writer, 'PaaS_Invoice_Detail')
+        worksheet = writer.sheets['PaaS_Invoice_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
         worksheet.set_column("B:B", 40, format2)
         worksheet.set_column("C:C", 60, format2)
+        worksheet.set_column("D:ZZ", 18, format1)
+    return
+
+def createIaaSInvoiceDetail(classicUsage):
+    """
+    Build a pivot table of items that typically show on CFTS invoice at child level
+    """
+    paasCodes = ["D01J5ZX", "D01J6ZX", "D01J7ZX", "D01J8ZX", "D01J9ZX", "D01JAZX", "D01JBZX", "D01NGZX", "D01NHZX",
+                 "D01NIZX", "D01NJZX", "D022FZX", "D1VCRLL", "D1VCSLL",
+                 "D1VCTLL", "D1VCULL", "D1VCVLL", "D1VCWLL", "D1VCXLL", "D1VCYLL", "D1VCZLL", "D1VD0LL", "D1VD1LL",
+                 "D1VD2LL", "D1VD3LL", "D1VD4LL", "D1VD5LL", "D1VD6LL",
+                 "D1VD7LL", "D1VD8LL", "D1VD9LL", "D1VDALL", "D1YJMLL", "D20Y7LL", "D1VG4LL"]
+    # D1VG4LL = VPC Block which is consolidated into classic charges
+
+    if len(classicUsage) > 0:
+        logging.info("Creating Platform Detail Tab.")
+        #childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID != [""]'\
+        #                                  ' and INV_PRODID != ["D1VG4LL"] and INV_DIV != ["U7"]')
+        childRecords = classicUsage.query('RecordType == ["Child"] and INV_PRODID != [""]'\
+                                          ' and INV_PRODID not in @paasCodes')
+
+        childSummary = pd.pivot_table(childRecords, index=["INV_PRODID", "childParentProduct", "Description"],
+                                         values=["childTotalRecurringCharge"],
+                                         columns=['IBM_Invoice_Month'],
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, margins=True,  margins_name="Total", fill_value=0)
+
+        childSummary.to_excel(writer, 'IaaS_Invoice_Detail')
+        worksheet = writer.sheets['IaaS_Invoice_Detail']
+        format1 = workbook.add_format({'num_format': '$#,##0.00'})
+        format2 = workbook.add_format({'align': 'left'})
+        worksheet.set_column("A:A", 20, format2)
+        worksheet.set_column("B:B", 50, format2)
+        worksheet.set_column("C:C", 70, format2)
         worksheet.set_column("D:ZZ", 18, format1)
     return
 
