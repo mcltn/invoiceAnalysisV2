@@ -110,6 +110,15 @@ def getInvoiceDates(startdate,enddate):
     enddate = datetime(int(enddate[0:4]),int(enddate[5:7]),20,0,0,0,tzinfo=dallas)
     return startdate, enddate
 
+def createEmployeeClient(end_point_employee, employee_user, passw, token):
+    """Creates a softlayer-python client that can make API requests for a given employee_user"""
+    client_noauth = SoftLayer.Client(endpoint_url=end_point_employee)
+    client_noauth.auth = None
+    employee = client_noauth['SoftLayer_User_Employee']
+    result = employee.performExternalAuthentication(employee_user, passw, token)
+    # Save result['hash'] somewhere to not have to login for every API request
+    client_employee = SoftLayer.employee_client(username=result['userId'], auth=result['hash'], endpoint_url=end_point_employee)
+    return client_employee
 
 def getObjectStorage():
     # GET LIST OF PORTAL INVOICES BETWEEN DATES USING CENTRAL (DALLAS) TIME
