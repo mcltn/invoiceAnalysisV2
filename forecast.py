@@ -50,7 +50,7 @@ optional arguments:
 
 """
 __author__ = 'jonhall'
-import SoftLayer, os, logging, logging.config, json, calendar, os.path, argparse, base64, re
+import SoftLayer, os, logging, logging.config, json, calendar, os.path, argparse, pytz, base64, re
 import pandas as pd
 import numpy as np
 from sendgrid import SendGridAPIClient
@@ -63,6 +63,9 @@ from calendar import monthrange
 from dateutil.relativedelta import relativedelta
 import ibm_boto3
 from ibm_botocore.client import Config, ClientError
+from ibm_platform_services import IamIdentityV1, UsageReportsV4
+from ibm_cloud_sdk_core import ApiException
+from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 
 def setup_logging(default_path='logging.json', default_level=logging.info, env_key='LOG_CFG'):
     # read logging.json for log parameters to be ued by script
@@ -82,7 +85,7 @@ def getDescription(categoryCode, detail):
     for item in detail:
         if 'categoryCode' in item:
             if item['categoryCode'] == categoryCode:
-                return item['product']['description'].strip()
+                return item['description'].strip()
     return ""
 
 def getStorageServiceUsage(categoryCode, detail):
@@ -107,27 +110,31 @@ def getInvoiceDates(startdate,enddate):
     enddate = datetime(int(enddate[0:4]),int(enddate[5:7]),20,0,0,0,tzinfo=dallas)
     return startdate, enddate
 
-def getInvoiceList(startdate, enddate):
+
+def getObjectStorage():
     # GET LIST OF PORTAL INVOICES BETWEEN DATES USING CENTRAL (DALLAS) TIME
+
+    global client, data
+    # Create dataframe to work with for classic infrastructure invoices
+    data = []
+
+    dallas = tz.gettz('US/Central')
+
+    # Create Classic infra API client
+    client = SoftLayer.Client(username="apikey", api_key=IC_API_KEY, endpoint_url=SL_ENDPOINT)
+
     dallas=tz.gettz('US/Central')
-    logging.info("Looking up invoices from {} to {}.".format(startdate.strftime("%m/%d/%Y %H:%M:%S%z"), enddate.strftime("%m/%d/%Y %H:%M:%S%z")))
-    # filter invoices based on local dallas time that correspond to CFTS UTC cutoff
+    logging.info("Getting current storage usage.")
     try:
-        invoiceList = client['Account'].getInvoices(mask='id,createDate,typeCode,invoiceTotalAmount,invoiceTotalRecurringAmount,invoiceTopLevelItemCount', filter={
-                'invoices': {
-                    'createDate': {
-                        'operation': 'betweenDate',
-                        'options': [
-                             {'name': 'startDate', 'value': [startdate.astimezone(dallas).strftime("%m/%d/%Y %H:%M:%S")]},
-                             {'name': 'endDate', 'value': [enddate.astimezone(dallas).strftime("%m/%d/%Y %H:%M:%S")]}
-                        ]
-                    }
-                }
-        })
+        storage = client['Network_Storage_Hub_Swift_Metrics'].getMetricData(id=37573109)
+
     except SoftLayer.SoftLayerAPIError as e:
         logging.error("Account::getInvoices: %s, %s" % (e.faultCode, e.faultString))
         quit()
-    return invoiceList
+    print(storage)
+
+    return storage
+
 
 def parseChildren(row, parentDescription, children):
     """
@@ -176,25 +183,14 @@ def parseChildren(row, parentDescription, children):
                     (row["childUsage"] * 0.75 * 0.00099) + (row["childUsage"] * 0.25 * 0.0051), 2)
                 logging.info("Recalculating Zenfolio Discounted usage for {} GB average COS usage at {}.".format(row["childUsage"],row[
                                                                                                          "childTotalRecurringCharge"]))
-
-            # Get product attributes for PaaS Product Code and DIV
-            row["INV_PRODID"] = ""
-            row["INV_DIV"] = ""
-            if "attributes" in child["product"]:
-                for attr in child["product"]["attributes"]:
-                    if attr["attributeType"]["keyName"] == "BLUEMIX_PART_NUMBER":
-                        row["INV_PRODID"] = attr["value"]
-                    if attr["attributeType"]["keyName"] == "BLUEMIX_SERVICE_PLAN_DIVISION":
-                        row["INV_DIV"] = attr["value"]
-
             # write child record
             data.append(row.copy())
-            logging.info("child {} {} {} RecurringFee: {}".format(row["childBillingItemId"], row["INV_PRODID"], row["Description"],
+            logging.info("child {} {} RecurringFee: {}".format(row["childBillingItemId"], row["Description"],
                                                                row["childTotalRecurringCharge"]))
             logging.debug(row)
     return
 
-def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
+def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT):
     """
     Read invoice top level detail from range of invoices
     """
@@ -207,239 +203,163 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
     # Create Classic infra API client
     client = SoftLayer.Client(username="apikey", api_key=IC_API_KEY, endpoint_url=SL_ENDPOINT)
 
-    # get list of invoices between start month and endmonth
-    invoiceList = getInvoiceList(startdate, enddate)
+    logging.info("Retrieving next invoice top level line items.")
 
-    if invoiceList == None:
-        return invoiceList
+    try:
+        billingItems = client['Account'].getNextInvoiceTopLevelBillingItems(
+                            mask="id, createDate, cycleStartDate, modifyDate, nextBillDate, cancellationDate, categoryCode, category, category.group, notes,"\
+                                 "hourlyFlag, hostName, domainName, description, currentHourlyCharge, hoursUsed, recurringFee, hourlyRecurringFee,"\
+                                 "children.description, children.category.group, children.categoryCode, children.recurringFee")
+    except SoftLayer.SoftLayerAPIError as e:
+        logging.error("Account::getNextInvoiceTopLevelBillingItems: %s, %s" % (e.faultCode, e.faultString))
+        quit()
 
-    for invoice in invoiceList:
-        if float(invoice['invoiceTotalAmount']) == 0:
-            continue
+    logging.info("Retrieved {} next invoice top level line items.".format(len(billingItems)))
+    # ITERATE THROUGH DETAIL
+    for item in billingItems:
+        logging.debug(item)
+        createDate = datetime.strptime(item["createDate"], "%Y-%m-%dT%H:%M:%S%z").astimezone(dallas).strftime("%Y-%m-%d")
+        cycleStartDate = datetime.strptime(item["cycleStartDate"], "%Y-%m-%dT%H:%M:%S%z").astimezone(dallas).strftime("%Y-%m-%d")
 
-        invoiceID = invoice['id']
-        # To align to CFTS billing cutoffs display time in Dallas timezone.
-        invoiceDate = datetime.strptime(invoice['createDate'], "%Y-%m-%dT%H:%M:%S%z").astimezone(dallas)
-        invoiceTotalAmount = float(invoice['invoiceTotalAmount'])
-        CFTSInvoiceDate = getCFTSInvoiceDate(invoiceDate)
+        if item["cancellationDate"] == "":
+            cancellationDate = ""
+        else:
+            cancellationDate = datetime.strptime(item["cancellationDate"], "%Y-%m-%dT%H:%M:%S%z").astimezone(dallas).strftime("%Y-%m-%d")
 
-        invoiceTotalRecurringAmount = float(invoice['invoiceTotalRecurringAmount'])
-        invoiceType = invoice['typeCode']
-        recurringDesc = ""
-        if invoiceType == "NEW":
-            serviceDateStart = invoiceDate
-            # get last day of month
-            serviceDateEnd= serviceDateStart.replace(day=calendar.monthrange(serviceDateStart.year,serviceDateStart.month)[1])
+        modifyDate=""
+        if "modifyDate" in item:
+            if item["modifyDate"] != "":
+                modifyDate = datetime.strptime(item["modifyDate"], "%Y-%m-%dT%H:%M:%S%z").astimezone(dallas).strftime("%Y-%m-%d")
 
-        if invoiceType == "CREDIT" or invoiceType == "ONE-TIME-CHARGE":
-            serviceDateStart = invoiceDate
-            serviceDateEnd = invoiceDate
+        nextBillDate = datetime.strptime(item["nextBillDate"], "%Y-%m-%dT%H:%M:%S%z").astimezone(dallas).strftime("%Y-%m-%d")
+        if "group" in item["category"]:
+            categoryGroup = item["category"]["group"]["name"]
+        else:
+            categoryGroup = "Other"
 
-        totalItems = invoice['invoiceTopLevelItemCount']
+        category = item["categoryCode"]
+        categoryName = item["category"]["name"]
+        description = item['description']
 
-        # PRINT INVOICE SUMMARY LINE
-        logging.info('Invoice: {} Date: {} Type:{} Items: {} Amount: ${:,.2f}'.format(invoiceID, datetime.strftime(invoiceDate, "%Y-%m-%d"), invoiceType, totalItems, invoiceTotalRecurringAmount))
+        memory = getDescription("ram", item["children"])
+        os = getDescription("os", item["children"])
 
-        limit = 250 ## set limit of record returned
-        for offset in range(0, totalItems, limit):
-            if ( totalItems - offset - limit ) < 0:
-                remaining = totalItems - offset
-            logging.info("Retrieving %s invoice line items for Invoice %s at Offset %s of %s" % (limit, invoiceID, offset, totalItems))
+        if 'hostName' in item:
+            if 'domainName' in item:
+                hostName = item['hostName']+"."+item['domainName']
+            else:
+                hostName = item['hostName']
+        else:
+            hostName = ""
 
-            try:
-                Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
-                                    mask="id, billingItemId,categoryCode,category,category.group, hourlyFlag,hostName, domainName,product.description,product.taxCategory," \
-                                         "createDate,totalRecurringAmount,totalOneTimeAmount,usageChargeFlag,hourlyRecurringFee,children.billingItemId,children.description,children.category.group," \
-                                         "children.categoryCode,children.product,children.product.taxCategory,children.product.attributes,children.product.attributes.attributeType,children.recurringFee")
-            except SoftLayer.SoftLayerAPIError as e:
-                logging.error("Billing_Invoice::getInvoiceTopLevelItems: %s, %s" % (e.faultCode, e.faultString))
-                quit()
-            count = 0
-            # ITERATE THROUGH DETAIL
-            for item in Billing_Invoice:
-                logging.debug(item)
-                totalOneTimeAmount = float(item['totalOneTimeAmount'])
-                billingItemId = item['billingItemId']
-                if "group" in item["category"]:
-                    categoryGroup = item["category"]["group"]["name"]
+        if "recurringFee" in item:
+            recurringFee = float(item["recurringFee"])
+        else:
+            recurringFee = 0
+
+        if "hoursUsed" in item:
+            hoursUsed = item["hoursUsed"]
+        else:
+            hoursUsed = 0
+
+        if "currentHourlyCharge" in item:
+            currentHourlyCharge = item["currentHourlyCharge"]
+        else:
+            currentHourlyCharge = 0
+
+        if "hourlyRecurringFee" in item:
+            hourlyRecurringFee = item["hourlyRecurringFee"]
+        else:
+            hourlyRecurringFee = 0
+
+        """
+        # If Hourly calculate hourly rate and total hours
+        if item["hourlyFlag"]:
+            hourlyRecurringFee = 0
+            hoursUsed = 0
+            if "hourlyRecurringFee" in item:
+                if float(item["hourlyRecurringFee"]) > 0:
+                    hourlyRecurringFee = float(item['hourlyRecurringFee'])
+                    for child in item["children"]:
+                        if "hourlyRecurringFee" in child:
+                            hourlyRecurringFee = hourlyRecurringFee + float(child['hourlyRecurringFee'])
+        """
+
+        if category == "storage_service_enterprise":
+            iops = getDescription("storage_tier_level", item["children"])
+            storage = getDescription("performance_storage_space", item["children"])
+            snapshot = getDescription("storage_snapshot_space", item["children"])
+            if snapshot == "":
+                description = storage + " " + iops + " "
+            else:
+                description = storage+" " + iops + " with " + snapshot
+        elif category == "performance_storage_iops":
+            iops = getDescription("performance_storage_iops", item["children"])
+            storage = getDescription("performance_storage_space", item["children"])
+            description = storage + " " + iops
+        elif category == "storage_as_a_service":
+            if item["hourlyFlag"]:
+                model = "Hourly"
+                for child in item["children"]:
+                    if "hourlyRecurringFee" in child:
+                        hourlyRecurringFee = hourlyRecurringFee + float(child['hourlyRecurringFee'])
+                if hourlyRecurringFee>0:
+                    hours = round(float(recurringFee) / hourlyRecurringFee)
                 else:
-                    categoryGroup = "Other"
-                category = item["categoryCode"]
-                categoryName = item["category"]["name"]
-                taxCategory = item['product']['taxCategory']['name']
-                description = item['product']['description']
-                memory = getDescription("ram", item["children"])
-                os = getDescription("os", item["children"])
-
-                if 'hostName' in item:
-                    if 'domainName' in item:
-                        hostName = item['hostName']+"."+item['domainName']
-                    else:
-                        hostName = item['hostName']
-                else:
-                    hostName = ""
-
-                recurringFee = float(item['totalRecurringAmount'])
-                NewEstimatedMonthly = 0
-
-                # If Hourly calculate hourly rate and total hours
-                if item["hourlyFlag"]:
-                    # if hourly charges are previous month usage
-                    serviceDateStart = invoiceDate - relativedelta(months=1)
-                    serviceDateEnd = serviceDateStart.replace(day=calendar.monthrange(serviceDateStart.year, serviceDateStart.month)[1])
-                    recurringDesc = "IaaS Usage"
-                    hourlyRecurringFee = 0
                     hours = 0
-                    if "hourlyRecurringFee" in item:
-                        if float(item["hourlyRecurringFee"]) > 0:
-                            hourlyRecurringFee = float(item['hourlyRecurringFee'])
-                            for child in item["children"]:
-                                if "hourlyRecurringFee" in child:
-                                    hourlyRecurringFee = hourlyRecurringFee + float(child['hourlyRecurringFee'])
-                            hours = round(float(recurringFee) / hourlyRecurringFee)            # Not an hourly billing item
+            else:
+                model = "Monthly"
+            space = getStorageServiceUsage('performance_storage_space', item["children"])
+            tier = getDescription("storage_tier_level", item["children"])
+            snapshot = getDescription("storage_snapshot_space", item["children"])
+            if space == "" or tier == "":
+                description = model + " File Storage"
+            else:
+                if snapshot == "":
+                    description = model + " File Storage "+ space + " at " + tier
                 else:
-                    if taxCategory == "PaaS":
-                        # Non Hourly PaaS Usage from actual usage two months prior
-                        serviceDateStart = invoiceDate - relativedelta(months=2)
-                        serviceDateEnd = serviceDateStart.replace(day=calendar.monthrange(serviceDateStart.year, serviceDateStart.month)[1])
-                        recurringDesc = "Platform Service Usage"
-                    elif taxCategory == "IaaS":
-                        if invoiceType == "RECURRING":
-                            serviceDateStart = invoiceDate
-                            serviceDateEnd = serviceDateStart.replace(day=calendar.monthrange(serviceDateStart.year, serviceDateStart.month)[1])
-                            recurringDesc = "IaaS Monthly"
-                    elif taxCategory == "HELP DESK":
-                        serviceDateStart = invoiceDate
-                        serviceDateEnd = serviceDateStart.replace(
-                            day=calendar.monthrange(serviceDateStart.year, serviceDateStart.month)[1])
-                        recurringDesc = "Support Charges"
-                    hourlyRecurringFee = 0
-                    hours = 0
-
-                if category == "storage_service_enterprise":
-                    iops = getDescription("storage_tier_level", item["children"])
-                    storage = getDescription("performance_storage_space", item["children"])
-                    snapshot = getDescription("storage_snapshot_space", item["children"])
-                    if snapshot == "":
-                        description = storage + " " + iops + " "
-                    else:
-                        description = storage+" " + iops + " with " + snapshot
-                elif category == "performance_storage_iops":
-                    iops = getDescription("performance_storage_iops", item["children"])
-                    storage = getDescription("performance_storage_space", item["children"])
-                    description = storage + " " + iops
-                elif category == "storage_as_a_service":
-                    if item["hourlyFlag"]:
-                        model = "Hourly"
-                        for child in item["children"]:
-                            if "hourlyRecurringFee" in child:
-                                hourlyRecurringFee = hourlyRecurringFee + float(child['hourlyRecurringFee'])
-                        if hourlyRecurringFee>0:
-                            hours = round(float(recurringFee) / hourlyRecurringFee)
-                        else:
-                            hours = 0
-                    else:
-                        model = "Monthly"
-                    space = getStorageServiceUsage('performance_storage_space', item["children"])
-                    tier = getDescription("storage_tier_level", item["children"])
-                    snapshot = getDescription("storage_snapshot_space", item["children"])
-                    if space == "" or tier == "":
-                        description = model + " File Storage"
-                    else:
-                        if snapshot == "":
-                            description = model + " File Storage "+ space + " at " + tier
-                        else:
-                            snapshotspace = getStorageServiceUsage('storage_snapshot_space', item["children"])
-                            description = model + " File Storage " + space + " at " + tier + " with " + snapshotspace
-                elif category == "guest_storage":
-                        imagestorage = getStorageServiceUsage("guest_storage_usage", item["children"])
-                        if imagestorage == "":
-                            description = description.replace('\n', " ")
-                        else:
-                            description = imagestorage
-                else:
+                    snapshotspace = getStorageServiceUsage('storage_snapshot_space', item["children"])
+                    description = model + " File Storage " + space + " at " + tier + " with " + snapshotspace
+        elif category == "guest_storage":
+                imagestorage = getStorageServiceUsage("guest_storage_usage", item["children"])
+                if imagestorage == "":
                     description = description.replace('\n', " ")
+                else:
+                    description = imagestorage
+        else:
+            description = description.replace('\n', " ")
 
+        #datetime.strptime(invoice['createDate'], "%Y-%m-%dT%H:%M:%S%z").astimezone(dallas)
+        recordType = "Parent"
+        # Append record to dataframe
+        row = {'createDate': createDate,
+               'cycleStartDate': cycleStartDate,
+               'cancellationDate': cancellationDate,
+               'modifyDate': modifyDate,
+               'nextBillDate': nextBillDate,
+               'id': item["id"],
+               'RecordType': recordType,
+               'hostName': hostName,
+               'Category_Group': categoryGroup,
+               'Category': categoryName,
+               'Description': description,
+               'Memory': memory,
+               'OS': os,
+               'hourlyFlag': item["hourlyFlag"],
+               'hoursUsed': hoursUsed,
+               'hourlyRecurringFee': round(hourlyRecurringFee,5),
+               'recurringFee': round(recurringFee,3),
+               'currentHourlyCharge': round(currentHourlyCharge,3)
+                }
+        # write parent record
+        data.append(row.copy())
+        logging.info("parent {} {} RecurringFee: {}".format(row["id"], row["Description"],row["recurringFee"]))
+        logging.debug(row)
 
-                if invoiceType == "NEW":
-                    # calculate non pro-rated amount for use in forecast
-                    daysInMonth = monthrange(invoiceDate.year, invoiceDate.month)[1]
-                    daysLeft = daysInMonth - invoiceDate.day + 1
-                    dailyAmount = recurringFee / daysLeft
-                    NewEstimatedMonthly = dailyAmount * daysInMonth
+        #if len(item["children"]) > 0:
+        #    parseChildren(row, description, item["children"])
 
-                recordType = "Parent"
-
-                # Append record to dataframe
-                row = {'Portal_Invoice_Date': invoiceDate.strftime("%Y-%m-%d"),
-                       'Portal_Invoice_Time': invoiceDate.strftime("%H:%M:%S%z"),
-                       'Service_Date_Start': serviceDateStart.strftime("%Y-%m-%d"),
-                       'Service_Date_End': serviceDateEnd.strftime("%Y-%m-%d"),
-                       'IBM_Invoice_Month': CFTSInvoiceDate,
-                       'Portal_Invoice_Number': invoiceID,
-                       'RecordType': recordType,
-                       'BillingItemId': billingItemId,
-                       'hostName': hostName,
-                       'Category_Group': categoryGroup,
-                       'Category': categoryName,
-                       'TaxCategory': taxCategory,
-                       'Description': description,
-                       'Memory': memory,
-                       'OS': os,
-                       'Hourly': item["hourlyFlag"],
-                       'Usage': item["usageChargeFlag"],
-                       'Hours': hours,
-                       'HourlyRate': round(hourlyRecurringFee,5),
-                       'totalRecurringCharge': round(recurringFee,3),
-                       'totalOneTimeAmount': float(totalOneTimeAmount),
-                       'NewEstimatedMonthly': float(NewEstimatedMonthly),
-                       'InvoiceTotal': float(invoiceTotalAmount),
-                       'InvoiceRecurring': float(invoiceTotalRecurringAmount),
-                       'Type': invoiceType,
-                       'Recurring_Description': recurringDesc,
-                       'childTotalRecurringCharge': 0
-                        }
-                # write parent record
-                data.append(row.copy())
-                logging.info("parent {} {} RecurringFee: {}".format(row["BillingItemId"], row["Description"],row["totalRecurringCharge"]))
-                logging.debug(row)
-
-                if len(item["children"]) > 0:
-                    parseChildren(row, description, item["children"])
-
-    df = pd.DataFrame(data, columns=['Portal_Invoice_Date',
-                               'Portal_Invoice_Time',
-                               'Service_Date_Start',
-                               'Service_Date_End',
-                               'IBM_Invoice_Month',
-                               'Portal_Invoice_Number',
-                               'Type',
-                               'RecordType',
-                               'BillingItemId',
-                               'hostName',
-                               'Category_Group',
-                               'Category',
-                               'TaxCategory',
-                               'Description',
-                               'Memory',
-                               'OS',
-                               'Hourly',
-                               'Usage',
-                               'Hours',
-                               'HourlyRate',
-                               'totalRecurringCharge',
-                               'NewEstimatedMonthly',
-                               'totalOneTimeAmount',
-                               'InvoiceTotal',
-                               'InvoiceRecurring',
-                               'Recurring_Description',
-                               'childBillingItemId',
-                               'childParentProduct',
-                               'childUsage',
-                               'childTotalRecurringCharge',
-                               'INV_PRODID',
-                               'INV_DIV'
-                                     ])
+    df = pd.DataFrame(data)
 
     return df
 
@@ -473,19 +393,17 @@ def createReport(filename, classicUsage):
     logging.info("Creating {}.".format(filename))
 
     # re-calculate Zenfolio top level parent items from children for classic object storage
-    classicUsage = fixParentRecordsObjectStorage(classicUsage)
-
-    # combine one time amounts and total recurring charge in datafrane
-    classicUsage["totalAmount"] = classicUsage["totalOneTimeAmount"] + classicUsage["totalRecurringCharge"] + classicUsage["childTotalRecurringCharge"]
+    #classicUsage = fixParentRecordsObjectStorage(classicUsage)
 
     # create pivots for various tabs
+    print(classicUsage)
     createDetailTab(classicUsage)
-    createInvoiceSummary(classicUsage)
-    createCategoorySummary(classicUsage)
-    createIaaSInvoiceDetail(classicUsage)
-    createClassicCombined(classicUsage)
-    createClassicCOS(classicUsage)
-    createPaaSInvoiceDetail(classicUsage)
+    #createInvoiceSummary(classicUsage)
+    #createCategoorySummary(classicUsage)
+    #createPlatformDetail(classicUsage)
+    #createIaaSLineItemDetail(classicUsage)
+    #createClassicCOS(classicUsage)
+    #createPaaSCOS(classicUsage)
 
     writer.save()
 
@@ -500,10 +418,10 @@ def createDetailTab(classicUsage):
     usdollar = workbook.add_format({'num_format': '$#,##0.00'})
     format2 = workbook.add_format({'align': 'left'})
     worksheet = writer.sheets['Detail']
-    worksheet.set_column('Q:AA', 18, usdollar)
-    worksheet.set_column('AB:AB', 18, format2)
-    worksheet.set_column('AC:AC', 18, usdollar)
-    worksheet.set_column('W:W', 18, format2 )
+    #worksheet.set_column('Q:AA', 18, usdollar)
+    #worksheet.set_column('AB:AB', 18, format2)
+    #worksheet.set_column('AC:AC', 18, usdollar)
+    #worksheet.set_column('W:W', 18, format2 )
     totalrows,totalcols=classicUsage.shape
     worksheet.autofilter(0,0,totalrows,totalcols)
     return
@@ -552,22 +470,22 @@ def createCategoorySummary(classicUsage):
         worksheet.set_column("E:ZZ", 18, format1)
     return
 
-def createClassicCombined(classicUsage):
+def createIaaSLineItemDetail(classicUsage):
     """
     Build a pivot table for items that show on CFTS IaaS charges not included in the PaaS children detail
     """
 
     if len(classicUsage) > 0:
         logging.info("Creating IaaS_Line_item_Detail Tab.")
-        iaasRecords = classicUsage.query('(RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID == [""]) or (RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"] '\
+        iaasRecords = classicUsage.query('RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"] '\
                                          'or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
-                                         'or Description == ["Block Storage for VPC General Purpose Tier Gen2"]))')
+                                         'or Description == ["Block Storage for VPC General Purpose Tier Gen2"])')
         iaasSummary = pd.pivot_table(iaasRecords, index=["Type", "Category_Group", "Category", "Description"],
                                          values=["totalAmount"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'totalAmount': np.sum}, margins=True, margins_name="Total", fill_value=0)
-        iaasSummary.to_excel(writer, 'Classic_IaaS_Combined')
-        worksheet = writer.sheets['Classic_IaaS_Combined']
+        iaasSummary.to_excel(writer, 'IaaS_Line_item_Detail')
+        worksheet = writer.sheets['IaaS_Line_item_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
@@ -587,8 +505,8 @@ def createClassicCOS(classicUsage):
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True, margins_name="Total")
-        iaascosSummary.to_excel(writer, 'Classic_COS_Custom')
-        worksheet = writer.sheets['Classic_COS_Custom']
+        iaascosSummary.to_excel(writer, 'Classic_COS_Detail')
+        worksheet = writer.sheets['Classic_COS_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
@@ -596,63 +514,51 @@ def createClassicCOS(classicUsage):
         worksheet.set_column("F:ZZ", 18, format1)
     return
 
-def createPaaSInvoiceDetail(classicUsage):
+def createPaaSCOS(classicUsage):
     """
     Build a pivot table of PaaS object storage
     """
 
     if len(classicUsage) > 0:
         logging.info("Creating PaaS_COS_Detail Tab.")
-        paasCodes = ["D01J5ZX","D01J6ZX","D01J7ZX","D01J8ZX","D01J9ZX","D01JAZX","D01JBZX","D01NGZX","D01NHZX","D01NIZX","D01NJZX","D022FZX","D1VCRLL","D1VCSLL",
-                     "D1VCTLL","D1VCULL","D1VCVLL","D1VCWLL","D1VCXLL","D1VCYLL","D1VCZLL","D1VD0LL","D1VD1LL","D1VD2LL","D1VD3LL","D1VD4LL","D1VD5LL","D1VD6LL",
-                     "D1VD7LL","D1VD8LL","D1VD9LL","D1VDALL","D1YJMLL","D20Y7LL"]
-
-        paascosRecords = classicUsage.query('RecordType == ["Child"] and INV_PRODID in @paasCodes')
-        paascosSummary = pd.pivot_table(paascosRecords, index=["INV_PRODID", "childParentProduct", "Description"],
+        paascosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage Premium"]')
+        paascosSummary = pd.pivot_table(paascosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
                                          aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True, margins_name="Total")
-        paascosSummary.to_excel(writer, 'PaaS_Invoice_Detail')
-        worksheet = writer.sheets['PaaS_Invoice_Detail']
+        paascosSummary.to_excel(writer, 'PaaS_COS_Detail')
+        worksheet = writer.sheets['PaaS_COS_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
-        worksheet.set_column("B:B", 40, format2)
-        worksheet.set_column("C:C", 60, format2)
-        worksheet.set_column("D:ZZ", 18, format1)
+        worksheet.set_column("B:D", 40, format2)
+        worksheet.set_column("E:E", 55, format2)
+        worksheet.set_column("F:ZZ", 18, format1)
     return
 
-def createIaaSInvoiceDetail(classicUsage):
+def createPlatformDetail(classicUsage):
     """
     Build a pivot table of items that typically show on CFTS invoice at child level
     """
-    paasCodes = ["D01J5ZX", "D01J6ZX", "D01J7ZX", "D01J8ZX", "D01J9ZX", "D01JAZX", "D01JBZX", "D01NGZX", "D01NHZX",
-                 "D01NIZX", "D01NJZX", "D022FZX", "D1VCRLL", "D1VCSLL",
-                 "D1VCTLL", "D1VCULL", "D1VCVLL", "D1VCWLL", "D1VCXLL", "D1VCYLL", "D1VCZLL", "D1VD0LL", "D1VD1LL",
-                 "D1VD2LL", "D1VD3LL", "D1VD4LL", "D1VD5LL", "D1VD6LL",
-                 "D1VD7LL", "D1VD8LL", "D1VD9LL", "D1VDALL", "D1YJMLL", "D20Y7LL", "D1VG4LL"]
-    # D1VG4LL = VPC Block which is consolidated into classic charges
 
     if len(classicUsage) > 0:
         logging.info("Creating Platform Detail Tab.")
-        #childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID != [""]'\
-        #                                  ' and INV_PRODID != ["D1VG4LL"] and INV_DIV != ["U7"]')
-        childRecords = classicUsage.query('RecordType == ["Child"] and INV_PRODID != [""]'\
-                                          ' and INV_PRODID not in @paasCodes')
-
-        childSummary = pd.pivot_table(childRecords, index=["INV_PRODID", "childParentProduct", "Description"],
+        childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and ' \
+                '(childParentProduct != ["Block Storage for VPC 10 IOPS/GB Gen2"] and childParentProduct != ["Block Storage for VPC 5 IOPS/GB Gen2"] ' \
+                'and childParentProduct != ["Block Storage for VPC General Purpose Tier Gen2"])' \
+                ' and childParentProduct != ["Cloud Object Storage Premium"]')
+        childSummary = pd.pivot_table(childRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
-                                         aggfunc={'childTotalRecurringCharge': np.sum}, margins=True,  margins_name="Total", fill_value=0)
-
-        childSummary.to_excel(writer, 'IaaS_Invoice_Detail')
-        worksheet = writer.sheets['IaaS_Invoice_Detail']
+                                         aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0)
+        childSummary.to_excel(writer, 'Platform_Detail')
+        worksheet = writer.sheets['Platform_Detail']
         format1 = workbook.add_format({'num_format': '$#,##0.00'})
         format2 = workbook.add_format({'align': 'left'})
         worksheet.set_column("A:A", 20, format2)
-        worksheet.set_column("B:B", 50, format2)
-        worksheet.set_column("C:C", 70, format2)
-        worksheet.set_column("D:ZZ", 18, format1)
+        worksheet.set_column("B:D", 40, format2)
+        worksheet.set_column("E:E", 60, format2)
+        worksheet.set_column("F:ZZ", 18, format1)
     return
 
 def multi_part_upload(bucket_name, item_name, file_path):
@@ -725,11 +631,8 @@ def sendEmail(startdate, enddate, sendGridTo, sendGridFrom, sendGridSubject, sen
 if __name__ == "__main__":
     setup_logging()
     parser = argparse.ArgumentParser(
-        description="Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and corresponding lsPaaS Consumption.")
+        description="Export next invoice (forecast) to an Excel file for all IBM Cloud Classic invoices and corresponding lsPaaS Consumption.")
     parser.add_argument("-k", "--IC_API_KEY", default=os.environ.get('IC_API_KEY', None), metavar="apikey", help="IBM Cloud API Key")
-    parser.add_argument("-s", "--startdate", default=os.environ.get('startdate', None), metavar="YYYY-MM", help="Start Year & Month in format YYYY-MM")
-    parser.add_argument("-e", "--enddate", default=os.environ.get('enddate', None), metavar="YYYY-MM", help="End Year & Month in format YYYY-MM")
-    parser.add_argument("-m", "--months", default=os.environ.get('months', None), help="Number of months including last full month to include in report.")
     parser.add_argument("--COS_APIKEY", default=os.environ.get('COS_APIKEY', None), help="COS apikey to use for Object Storage.")
     parser.add_argument("--COS_ENDPOINT", default=os.environ.get('COS_ENDPOINT', None), help="COS endpoint to use for Object Storage.")
     parser.add_argument("--COS_INSTANCE_CRN", default=os.environ.get('COS_INSTANCE_CRN', None), help="COS Instance CRN to use for file upload.")
@@ -738,40 +641,16 @@ if __name__ == "__main__":
     parser.add_argument("--sendGridTo", default=os.environ.get('sendGridTo', None), help="SendGrid comma deliminated list of emails to send output to.")
     parser.add_argument("--sendGridFrom", default=os.environ.get('sendGridFrom', None), help="Sendgrid from email to send output from.")
     parser.add_argument("--sendGridSubject", default=os.environ.get('sendGridSubject', None), help="SendGrid email subject for output email")
-    parser.add_argument("--output", default=os.environ.get('output', 'invoice-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
+    parser.add_argument("--output", default=os.environ.get('output','forecast-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
     parser.add_argument("--SL_PRIVATE", default=False, action=argparse.BooleanOptionalAction, help="Use IBM Cloud Classic Private API Endpoint")
 
     args = parser.parse_args()
-
-    if args.months != None:
-        months = int(args.months)
-        dallas=tz.gettz('US/Central')
-        today=datetime.today().astimezone(dallas)
-        if today.day > 19:
-            enddate=today.strftime('%Y-%m')
-            startdate = today - relativedelta(months=months-1)
-            startdate = startdate.strftime("%Y-%m")
-        else:
-            enddate = today - relativedelta(months=1)
-            enddate=enddate.strftime('%Y-%m')
-            startdate = today - relativedelta(months=(months))
-            startdate = startdate.strftime("%Y-%m")
-    else:
-        if args.startdate == None or args.enddate == None:
-            logging.error("You must provide either a number of months (-m) or a start (-s) and end month (-e) in the format of YYYY-MM.")
-            quit()
-        else:
-            startdate = args.startdate
-            enddate = args.enddate
 
     if args.IC_API_KEY == None:
         logging.error("You must provide an IBM Cloud ApiKey with billing View authority to run script.")
         quit()
 
     IC_API_KEY = args.IC_API_KEY
-
-    # Calculate invoice dates based on SLIC invoice cutoffs.
-    startdate, enddate = getInvoiceDates(startdate, enddate)
 
     # Change endpoint to private Endpoint if command line open chosen
     if args.SL_PRIVATE:
@@ -780,7 +659,9 @@ if __name__ == "__main__":
         SL_ENDPOINT = "https://api.softlayer.com/xmlrpc/v3.1"
 
     #  Retrieve Invoices from classic
-    classicUsage = getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate)
+    #classicUsage = getInvoiceDetail(IC_API_KEY, SL_ENDPOINT)
+    storage = getObjectStorage()
+    quit()
 
     """"
     Build Exel Report Report with Charges
