@@ -22,19 +22,11 @@ __author__ = 'jonhall'
 import SoftLayer, os, logging, logging.config, json, calendar, os.path, argparse, pytz, base64, re
 import pandas as pd
 import numpy as np
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import (
-    Mail, Personalization, Email, Attachment, FileContent, FileName,
-    FileType, Disposition, ContentId)
 from datetime import datetime, tzinfo, timezone
 from dateutil import tz
 from calendar import monthrange
 from dateutil.relativedelta import relativedelta
-import ibm_boto3
-from ibm_botocore.client import Config, ClientError
-from ibm_platform_services import IamIdentityV1, UsageReportsV4
-from ibm_cloud_sdk_core import ApiException
-from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
+
 
 def setup_logging(default_path='logging.json', default_level=logging.info, env_key='LOG_CFG'):
     # read logging.json for log parameters to be ued by script
@@ -49,36 +41,6 @@ def setup_logging(default_path='logging.json', default_level=logging.info, env_k
     else:
         logging.basicConfig(level=default_level)
 
-def getDescription(categoryCode, detail):
-    # retrieve additional description detail for child records
-    for item in detail:
-        if 'categoryCode' in item:
-            if item['categoryCode'] == categoryCode:
-                return item['description'].strip()
-    return ""
-
-def getStorageServiceUsage(categoryCode, detail):
-    # retrieve storage details for description text
-    for item in detail:
-        if 'categoryCode' in item:
-            if item['categoryCode'] == categoryCode:
-                return item['description'].strip()
-    return ""
-
-
-def getCFTSInvoiceDate(invoiceDate):
-    # Determine CFTS Invoice Month (20th of prev month - 19th of current month) are on current month CFTS invoice.
-    if invoiceDate.day > 19:
-        invoiceDate = invoiceDate + relativedelta(months=1)
-    return invoiceDate.strftime('%Y-%m')
-
-def getInvoiceDates(startdate,enddate):
-    # Adjust start and dates to match CFTS Invoice cutoffs of 20th to end of day 19th 00:00 Dallas time on the 20th
-    dallas = tz.gettz('US/Central')
-    startdate = datetime(int(startdate[0:4]),int(startdate[5:7]),20,0,0,0,tzinfo=dallas) - relativedelta(months=1)
-    enddate = datetime(int(enddate[0:4]),int(enddate[5:7]),20,0,0,0,tzinfo=dallas)
-    return startdate, enddate
-
 def createEmployeeClient(end_point_employee, employee_user, passw, token):
     """Creates a softlayer-python client that can make API requests for a given employee_user"""
     client_noauth = SoftLayer.Client(endpoint_url=end_point_employee)
@@ -86,88 +48,54 @@ def createEmployeeClient(end_point_employee, employee_user, passw, token):
     employee = client_noauth['SoftLayer_User_Employee']
     result = employee.performExternalAuthentication(employee_user, passw, token)
     # Save result['hash'] somewhere to not have to login for every API request
-    client_employee = SoftLayer.employee_client(username=result["userId"], auth=result['hash'], endpoint_url=end_point_employee)
+    client_employee = SoftLayer.employee_client(username=employee_user, access_token=result['hash'], endpoint_url=end_point_employee)
     return client_employee
 
 def getObjectStorage():
     # GET LIST OF PORTAL INVOICES BETWEEN DATES USING CENTRAL (DALLAS) TIME
 
-    logging.info("Getting current storage usage.")
+    logging.info("Getting current storage usage {}.".format(ims_account))
     try:
-        #storage = client['SoftLayer_Network_Storage_Hub_Cleversafe_Account'].getAllObjects(id=37573109)
-        storage = client['Account'].getAccountStatus(id=1410521)
+        objectstorage = client['Account'].getHubNetworkStorage(id=ims_account, mask="metricTrackingObject")
     except SoftLayer.SoftLayerAPIError as e:
         logging.error("Account::getInvoices: %s, %s" % (e.faultCode, e.faultString))
         quit()
-    print(storage)
+    end = datetime.now()
+    start = datetime.now() - relativedelta(days=25)
+    type=[{"keyName": "BYTES_USED_CROSSREGION_US","summaryType": "average"}]
 
-    return storage
+    #end = "2022-07-20"
+    #start = "2022-07-01"
 
-def multi_part_upload(bucket_name, item_name, file_path):
-    try:
-        logging.info("Starting file transfer for {0} to bucket: {1}".format(item_name, bucket_name))
-        # set 5 MB chunks
-        part_size = 1024 * 1024 * 5
+    for instance in objectstorage:
+        print()
+        trackingObject = instance["metricTrackingObject"]
+        #print("instance: {}".format(instance))
 
-        # set threadhold to 15 MB
-        file_threshold = 1024 * 1024 * 15
+        buckets = client["Network_Storage_Hub_Cleversafe_Account"].getBuckets(id=instance["id"])
+        print("buckets")
+        for bucket in buckets:
+            print("{} location: {}  Bytes Used: {}".format(bucket["name"], bucket["storageLocation"], bucket["bytesUsed"]))
 
-        # set the transfer threshold and chunk size
-        transfer_config = ibm_boto3.s3.transfer.TransferConfig(
-            multipart_threshold=file_threshold,
-            multipart_chunksize=part_size
-        )
+        metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCapacityUsage(id=instance["id"])
+        print("Total Account Usage: {}".format(metrics))
 
-        # the upload_fileobj method will automatically execute a multi-part upload
-        # in 5 MB chunks for all files over 15 MB
-        with open(file_path, "rb") as file_data:
-            cos.Object(bucket_name, item_name).upload_fileobj(
-                Fileobj=file_data,
-                Config=transfer_config
-            )
-        logging.info("Transfer for {0} complete".format(item_name))
-    except ClientError as be:
-        logging.error("CLIENT ERROR: {0}".format(be))
-    except Exception as e:
-        logging.error("Unable to complete multi-part upload: {0}".format(e))
-    return
+        metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCloudObjectStorageMetrics(start.timestamp() * 1000,
+                    end.timestamp() * 1000, "us-south", "standard,cold,vault,flex", "bytesused,bandwidth,retrieval,classa,classb",
+                    id=instance["id"])
 
-def sendEmail(startdate, enddate, sendGridTo, sendGridFrom, sendGridSubject, sendGridApi, outputname):
-    # Send output to email distributionlist via SendGrid
+        metrics = json.loads(metrics[1])
 
-    html = ("<p><b>invoiceAnalysis Output Attached for {} to {} </b></br></p>".format(datetime.strftime(startdate, "%m/%d/%Y"), datetime.strftime(enddate, "%m/%d/%Y")))
+        print()
+        print ("Metrics")
+        for resource in metrics["resources"]:
+            print("Location: {} class: {}".format(resource["storage_location"],resource["storage_class"]))
+            for metric in resource["metrics"]:
+                print ("     metric: {} {}".format(metric["name"], metric["value"]))
 
-    to_list = Personalization()
-    for email in sendGridTo.split(","):
-        to_list.add_to(Email(email))
+        print ("Warnings")
+        print (metrics["warnings"])
 
-    message = Mail(
-        from_email=sendGridFrom,
-        subject=sendGridSubject,
-        html_content=html
-    )
-
-    message.add_personalization(to_list)
-
-    # create attachment from file
-    file_path = os.path.join("./", outputname)
-    with open(file_path, 'rb') as f:
-        data = f.read()
-        f.close()
-    encoded = base64.b64encode(data).decode()
-    attachment = Attachment()
-    attachment.file_content = FileContent(encoded)
-    attachment.file_type = FileType('application/xlsx')
-    attachment.file_name = FileName(outputname)
-    attachment.disposition = Disposition('attachment')
-    attachment.content_id = ContentId('invoiceAnalysis')
-    message.attachment = attachment
-    try:
-        sg = SendGridAPIClient(sendGridApi)
-        response = sg.send(message)
-        logging.info("Email Send succesfull to {}, status code = {}.".format(sendGridTo,response.status_code))
-    except Exception as e:
-        logging.error("Email Send Error, status code = %s." % e.to_dict)
     return
 
 if __name__ == "__main__":
@@ -180,19 +108,11 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--account", default=os.environ.get('ims_account', None), metavar="account",
                         help="IMS Account")
     parser.add_argument("-y", "--yubikey", default=os.environ.get('yubikey', None), metavar="yubikey", help="IMS Yubi Key")
-    parser.add_argument("--COS_APIKEY", default=os.environ.get('COS_APIKEY', None), help="COS apikey to use for Object Storage.")
-    parser.add_argument("--COS_ENDPOINT", default=os.environ.get('COS_ENDPOINT', None), help="COS endpoint to use for Object Storage.")
-    parser.add_argument("--COS_INSTANCE_CRN", default=os.environ.get('COS_INSTANCE_CRN', None), help="COS Instance CRN to use for file upload.")
-    parser.add_argument("--COS_BUCKET", default=os.environ.get('COS_BUCKET', None), help="COS Bucket name to use for file upload.")
-    parser.add_argument("--sendGridApi", default=os.environ.get('sendGridApi', None), help="SendGrid ApiKey used to email output.")
-    parser.add_argument("--sendGridTo", default=os.environ.get('sendGridTo', None), help="SendGrid comma deliminated list of emails to send output to.")
-    parser.add_argument("--sendGridFrom", default=os.environ.get('sendGridFrom', None), help="Sendgrid from email to send output from.")
-    parser.add_argument("--sendGridSubject", default=os.environ.get('sendGridSubject', None), help="SendGrid email subject for output email")
     parser.add_argument("--output", default=os.environ.get('output','forecast-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
     parser.add_argument("--SL_PRIVATE", default=False, action=argparse.BooleanOptionalAction, help="Use IBM Cloud Classic Private API Endpoint")
     args = parser.parse_args()
 
-    if args.IC_API_KEY != "force":
+    if args.IC_API_KEY == None:
         if args.username == None or args.password == None or args.yubikey == None or args.account == None:
             logging.error("You must provide either IBM Cloud ApiKey or Internal Employee credentials & IMS account.")
             quit()
@@ -220,28 +140,4 @@ if __name__ == "__main__":
 
     storage = getObjectStorage()
 
-    quit()
-
-    """"
-    Build Exel Report Report with Charges
-    """
-    createReport(args.output, classicUsage)
-
-    if args.sendGridApi != None:
-        sendEmail(startdate, enddate, args.sendGridTo, args.sendGridFrom, args.sendGridSubject, args.sendGridApi, args.output)
-
-    # upload created file to COS if COS credentials provided
-    if args.COS_APIKEY != None:
-        cos = ibm_boto3.resource("s3",
-                                 ibm_api_key_id=args.COS_APIKEY,
-                                 ibm_service_instance_id=args.COS_INSTANCE_CRN,
-                                 config=Config(signature_version="oauth"),
-                                 endpoint_url=args.COS_ENDPOINT
-                                 )
-        multi_part_upload(args.COS_BUCKET, args.output, "./" + args.output)
-
-    if args.sendGridApi != None or args.COS_APIKEY != None:
-        #cleanup file if written to COS or sendvia email
-        logging.info("Deleting {} local file.".format(args.output))
-        os.remove("./"+args.output)
     logging.info("invoiceAnalysis complete.")
