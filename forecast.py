@@ -51,6 +51,14 @@ def createEmployeeClient(end_point_employee, employee_user, passw, token):
     client_employee = SoftLayer.employee_client(username=employee_user, access_token=result['hash'], endpoint_url=end_point_employee)
     return client_employee
 
+def estimateCost(usage):
+    """
+    Estimate cost based on contractual calculation
+    """
+    totalRecurringCharge = round(( usage * 0.75 * 0.00099) + (usage * 0.25 * 0.0051), 2)
+    logging.info("Estimating Zenfolio Discounted usage for {} GB average COS usage at {}.".format(usage, totalRecurringCharge))
+    return totalRecurringCharge
+
 def getObjectStorage():
     # GET LIST OF PORTAL INVOICES BETWEEN DATES USING CENTRAL (DALLAS) TIME
 
@@ -60,41 +68,38 @@ def getObjectStorage():
     except SoftLayer.SoftLayerAPIError as e:
         logging.error("Account::getInvoices: %s, %s" % (e.faultCode, e.faultString))
         quit()
-    end = datetime.now()
-    start = datetime.now() - relativedelta(days=25)
-    type=[{"keyName": "BYTES_USED_CROSSREGION_US","summaryType": "average"}]
-
-    #end = "2022-07-20"
-    #start = "2022-07-01"
-
+    end = datetime(2022,7,26,23,59,59)
+    start = datetime(end.year, end.month, 1,0,0)
+    logging.info("Using {} to {} for metrics.".format(start,end))
+    """
+    print ()
+    print ("Buckets,Location,ObjectCount,BytesUsed")
     for instance in objectstorage:
-        print()
-        trackingObject = instance["metricTrackingObject"]
-        #print("instance: {}".format(instance))
-
         buckets = client["Network_Storage_Hub_Cleversafe_Account"].getBuckets(id=instance["id"])
-        print("buckets")
         for bucket in buckets:
-            print("{} location: {}  Bytes Used: {}".format(bucket["name"], bucket["storageLocation"], bucket["bytesUsed"]))
+            print("{},{},{},{}".format(bucket["name"], bucket["storageLocation"], bucket["objectCount"], int(bucket["bytesUsed"])))
 
-        metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCapacityUsage(id=instance["id"])
-        print("Total Account Usage: {}".format(metrics))
+        #metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCapacityUsage(id=instance["id"])
+        #print("Total Account Usage: {}".format(metrics))
+
+    print ()
+    """
+    print ("Location,Class,Metric,Qty")
+    for instance in objectstorage:
+        """
+        Pull metrics
+        """
 
         metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCloudObjectStorageMetrics(start.timestamp() * 1000,
-                    end.timestamp() * 1000, "us-south", "standard,cold,vault,flex", "bytesused,bandwidth,retrieval,classa,classb",
+                    end.timestamp() * 1000, "us-south", "standard,cold", "copy_count,bandwidth,retrieval,classa,classb",
                     id=instance["id"])
 
         metrics = json.loads(metrics[1])
-
-        print()
-        print ("Metrics")
+        print (json.dumps(metrics["warnings"],indent=2))
         for resource in metrics["resources"]:
-            print("Location: {} class: {}".format(resource["storage_location"],resource["storage_class"]))
             for metric in resource["metrics"]:
-                print ("     metric: {} {}".format(metric["name"], metric["value"]))
+                print ("{},{},{},{}".format(resource["storage_location"],resource["storage_class"],metric["name"], metric["value"]))
 
-        print ("Warnings")
-        print (metrics["warnings"])
 
     return
 
