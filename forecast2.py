@@ -70,36 +70,18 @@ def getObjectStorage():
         quit()
     end = datetime(2022,7,26,23,59,59)
     start = datetime(end.year, end.month, 1,0,0)
+    type = [
+        {'keyName': 'BYTES_USED_COLD_US_SOUTH','summaryType': 'items'},
+        {'keyName': 'CLASSA_API_COLD_US_SOUTH','summaryType': 'items'}
+    ]
+
     logging.info("Using {} to {} for metrics.".format(start,end))
 
-    print ()
-    print ("Buckets,Location,ObjectCount,BytesUsed")
     for instance in objectstorage:
-        buckets = client["Network_Storage_Hub_Cleversafe_Account"].getBuckets(id=instance["id"])
-        for bucket in buckets:
-            print("{},{},{},{}".format(bucket["name"], bucket["storageLocation"], bucket["objectCount"], int(bucket["bytesUsed"])))
-
-        #metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCapacityUsage(id=instance["id"])
-        #print("Total Account Usage: {}".format(metrics))
-
-    print ()
-
-    print ("Location,Class,Metric,Qty")
-    for instance in objectstorage:
-        """
-        Pull metrics
-        """
-
-        metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCloudObjectStorageMetrics(start.timestamp() * 1000,
-                    end.timestamp() * 1000, "us-south", "standard,cold", "copy_count,bandwidth,retrieval,classa,classb",
-                    id=instance["id"])
-
-        metrics = json.loads(metrics[1])
-        print (json.dumps(metrics["warnings"],indent=2))
-        for resource in metrics["resources"]:
-            for metric in resource["metrics"]:
-                print ("{},{},{},{}".format(resource["storage_location"],resource["storage_class"],metric["name"], metric["value"]))
-
+        trackingObject=instance["metricTrackingObject"]
+        trackingObjectId=trackingObject["id"]
+        metricObject = client["Metric_Tracking_Object"].getSummaryData(start, end, type, 3600, id=trackingObjectId)
+        print (metricObject)
     return
 
 if __name__ == "__main__":
