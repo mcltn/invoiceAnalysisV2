@@ -72,18 +72,6 @@ def getObjectStorage():
     start = datetime(end.year, end.month, 1,0,0)
     logging.info("Using {} to {} for metrics.".format(start,end))
 
-    print ()
-    print ("Buckets,Location,ObjectCount,BytesUsed")
-    for instance in objectstorage:
-        buckets = client["Network_Storage_Hub_Cleversafe_Account"].getBuckets(id=instance["id"])
-        for bucket in buckets:
-            print("{},{},{},{}".format(bucket["name"], bucket["storageLocation"], bucket["objectCount"], int(bucket["bytesUsed"])))
-
-        #metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCapacityUsage(id=instance["id"])
-        #print("Total Account Usage: {}".format(metrics))
-
-    print ()
-
     print ("Location,Class,Metric,Qty")
     for instance in objectstorage:
         """
@@ -91,11 +79,11 @@ def getObjectStorage():
         """
 
         metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCloudObjectStorageMetrics(start.timestamp() * 1000,
-                    end.timestamp() * 1000, "us-south", "standard,cold", "copy_count,bandwidth,retrieval,classa,classb",
+                    end.timestamp() * 1000, "us-south", "standard,cold,vault,flex", "average_byte_hours,bandwidth,retrieval,classa,classb,average_archive_byte_hours",
                     id=instance["id"])
 
         metrics = json.loads(metrics[1])
-        print (json.dumps(metrics["warnings"],indent=2))
+        #print (json.dumps(metrics["warnings"],indent=2))
         for resource in metrics["resources"]:
             for metric in resource["metrics"]:
                 print ("{},{},{},{}".format(resource["storage_location"],resource["storage_class"],metric["name"], metric["value"]))
