@@ -68,7 +68,7 @@ def getObjectStorage():
     except SoftLayer.SoftLayerAPIError as e:
         logging.error("Account::getInvoices: %s, %s" % (e.faultCode, e.faultString))
         quit()
-    end = datetime(2022,7,26,23,59,59)
+    end = datetime(2022,6,30,23,59,59)
     start = datetime(end.year, end.month, 1,0,0)
     logging.info("Using {} to {} for metrics.".format(start,end))
 
