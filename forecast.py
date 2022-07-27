@@ -71,7 +71,7 @@ def getObjectStorage():
     end = datetime(2022,7,26,23,59,59)
     start = datetime(end.year, end.month, 1,0,0)
     logging.info("Using {} to {} for metrics.".format(start,end))
-    """
+
     print ()
     print ("Buckets,Location,ObjectCount,BytesUsed")
     for instance in objectstorage:
@@ -83,7 +83,7 @@ def getObjectStorage():
         #print("Total Account Usage: {}".format(metrics))
 
     print ()
-    """
+
     print ("Location,Class,Metric,Qty")
     for instance in objectstorage:
         """
