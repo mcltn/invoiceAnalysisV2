@@ -247,9 +247,6 @@ if __name__ == "__main__":
 
     objectStorageInstances = getObjectStorageInstances()
     dallas = tz.gettz('US/Central')
-    #end = datetime.now()
-
-    #end = datetime(2022,5,31,11,59,59).astimezone(dallas)
     end =datetime.now().astimezone(dallas)
     start = datetime(end.year, end.month, 1,0,0).astimezone(dallas)
 
