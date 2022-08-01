@@ -6,6 +6,7 @@ In addition to consolidation of the detailed data,  pivot tables are created in 
 Script | Description
 ------ | -----------
 invoiceAnalysis.py | Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and PaaS Consumption.
+estimateCOS.py | Estimate current month usage month to current date & time
 requirements.txt | Package requirements
 logging.json | LOGGER config used by script
 Dockerfile | Docker Build file used by code engine to build container.
@@ -18,7 +19,7 @@ Dockerfile | Docker Build file used by code engine to build container.
 | COS API Key | API Key used to write output to specified bucket (if specified) | COS Bucket Write access to Bucket at specified Object Storage CRN.
 
 
-### Output Description
+### Output Description (invoiceAnalysis.py)
 One Excel worksheet is created with multiple tabs from the collected data (Classic Invoices & PaaS Usage between start and end month specified).   _Tabs are only be created if there are related resources on the collected invoices._
 
 *Excel Tab Explanation*
@@ -30,11 +31,26 @@ One Excel worksheet is created with multiple tabs from the collected data (Class
    - ***Classic_COS_Custom*** is a table of the custom charges for Classic Object Storage.  Detail is provided for awareness, but will not appear on invoice.
    - ***Platform_Invoice_Detail*** is a table of all the Platform as a Service charges appearing on the  "Platform as a Service" invoice.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
 
+
 ### Reconciliation Approach
 1. First Look at the IaaS_Invoice_Detail.  These are the line items that should be broken out on the monthly Infrastructure as a Service Invoice.   Items with the same INV_PRODID will appear as one line item.  If correct you should be able to match all but two line items on invoice.
 2. Next look at the Classic_IaaS_combined tab, this is a breakdown of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items.  Detail is provided for awareness, but will not appear on invoice.
 3. Next look at the Classic_COS_Custom tab, this is a breakdown of the custom charges for Classic Object Storage.  On the monthly invoice  This total should match the remaining line item.  Detail is provided for awareness, but will not appear on invoice.
 4. Last look at the Platform_Invoice_Detail tab,  this is a breakdown of all the Platform as a Service charges appearing on the second monthly invoice as "Platform as a Service"   The lines items should match this invoice.  Items with the same INV_PRODID will appear as one line item.
+
+### estimateCOS.py Output
+*Excel Tab Explanation*
+   - ***Detail*** is a table of all billable metrics for each classic Object Storage instance.   Each row contains a unique location, class, and metric value with estimated cost.  Note Averag  
+   - ***COS_PIVOT*** is a consolidated pivot of the cost estimate by location, storageClass and metric
+   average_archive_byte_hours
+
+* Metrics Estiamted
+   - ***average_byte_hours** This is an estiamted average, for which the ***monthly*** usage charge will be based on.  
+   - ***bandwidth*** This is the total bandwidth (GB) month to date.  
+   - ***classa*** This is the total number of class A transactions.   Usage charge is per 1000 transactions
+   - ***classb*** This is the total number of class B transactions.   Usage charge is per 10,000 transactions
+   - ***retrieval*** This is the total data retreived (GB) month to date.  
+
 
 ## Script Execution Instructions: _See alternate instructions for Code Engine._
 
@@ -108,41 +124,3 @@ optional arguments:
 
 ```
 
-## Running IBM Cloud Classic Infrastructure Invoice Analysis Report as a Code Engine Job
-
-### Setting up IBM Code Engine and building container to run report
-1. Create project, build job and job.  
-   1.1. Open the Code Engine console.  
-   1.2. Select Start creating from Start from source code.  
-   1.3. Select Job  
-   1.4. Enter a name for the job such as invoiceanalysis. Use a name for your job that is unique within the project.  
-   1.5. Select a project from the list of available projects of if this is the first one, create a new one. Note that you must have a selected project to deploy an app.  
-   1.6. Enter the URL for this GitHub repository and click specify build details. Make adjustments if needed to URL and Branch name. Click Next.  
-   1.7. Select Dockerfile for Strategy, Dockerfile for Dockerfile, 10m for Timeout, and Medium for Build resources. Click Next.  
-   1.8. Select a container registry location, such as IBM Registry, Dallas.  
-   1.9. Select Automatic for Registry access.  
-   1.10. Select an existing namespace or enter a name for a new one, for example, newnamespace. 
-   1.11. Enter a name for your image and optionally a tag.  
-   1.12. Click Done.  
-   1.13. Click Create.  
-2. Create configmaps and secrets.  
-   2.1. From project list, choose newly created project.  
-   2.2. Select secrets and configmaps  
-   2.3. click create, choose config map, and give it a name. Add the following key value pairs    
-        ***COS_BUCKET*** = Bucket within COS instance to write report file to.  
-        ***COS_ENDPOINT*** = Public COS Endpoint for bucket to write report file to  
-        ***COS_INSTANCE_CRN*** = COS Service Instance CRN in which bucket is located.  
-   2.4. Select secrets and configmaps (again)
-   2.5.  click create, choose secrets, and give it a name. Add the following key value pairs  
-         ***IC_API_KEY*** = an IBM Cloud API Key with Billing access to IBM Cloud Account  
-         ***COS_APIKEY*** = your COS Api Key Id with writter access to appropriate bucket  
-3. Choose the job previously created.  
-   3.1. Click on the Environment variables tab.   
-   3.2. Click add, choose reference to full configmap, and choose configmap created in previous step and click add.  
-   3.3. Click add, choose reference to full secret, and choose secrets created in previous step and click add.  
-   3.4 .Click add, choose literal value (click add after each, and repeat)  
-         ***startdate*** = start year & month of invoice analysis in YYYY-MM format  
-         ***enddate*** = end year & month invoice analysis in YYYY-MM format  
-         ***output*** = report filename (including extension of XLSX to be written to COS bucket)  
-4. to Run report click ***Submit job***  
-5. Logging for job can be found from job screen, by clicking Actions, Logging
