@@ -92,7 +92,7 @@ def getObjectStorageMetrics(objectStorageInstances, start, end):
                 if resource["storage_class"] == "cold":
                     if metric["name"] == "average_byte_hours":
                         gbused = float(metric["value"]) / 1073741824
-                        unit = "custom"
+                        unit = "( avg_byte_hours * 0.75 * 0.00099) + (avg_byte_hours * 0.25 * 0.0051)"
                         cost = estimateCost(gbused)
                     elif metric["name"] == "bandwidth":
                         gbused = float(metric["value"]) / 1073741824
@@ -144,10 +144,10 @@ def getObjectStorageMetrics(objectStorageInstances, start, end):
                         cost = float(metric["value"]) / 10000 * unit
                     else:
                         gbused = 0
-                        cost =0
+                        cost = 0
 
                 row = {"start": datetime.strftime(start, "%Y-%m-%d %H:%M:%S"), "end": datetime.strftime(end, "%Y-%m-%d %H:%M:%S"), "billingItemId": instance["billingItem"]["id"], "resourceId": resource["resource_id"], "storageLocation": resource["storage_location"],
-                       "storageClass": resource["storage_class"], "metric": metric["name"], "metricValue": float(metric["value"]), "GB": gbused, "unitPrice": unit,"estimate": cost}
+                       "storageClass": resource["storage_class"], "metric": metric["name"], "metricValue": float(metric["value"]), "GB": gbused, "unitPrice": unit, "estimate": cost}
 
                 data.append(row.copy())
 
@@ -160,7 +160,7 @@ def getObjectStorageMetrics(objectStorageInstances, start, end):
                                      'metric',
                                      'metricValue',
                                      'GB',
-                                     'unitPrice'
+                                     'unitPrice',
                                      'estimate'
                                      ])
 
@@ -173,6 +173,7 @@ def createDetailTab(classicUsage):
     logging.info("Creating detail tab.")
     classicUsage.to_excel(writer, 'Detail')
     usdollar = workbook.add_format({'num_format': '$#,##0.00'})
+    usdollar2 = workbook.add_format({'num_format': '$#,##0.00000'})
     format2 = workbook.add_format({'align': 'left'})
     format3 = workbook.add_format({'num_format': '#,##0'})
     format4 = workbook.add_format({'num_format': '#,##0.00000'})
@@ -182,7 +183,8 @@ def createDetailTab(classicUsage):
     worksheet.set_column('F:H', 20, format2)
     worksheet.set_column('I:I', 40, format3)
     worksheet.set_column('J:J', 20, format4)
-    worksheet.set_column('K:K', 20, usdollar)
+    worksheet.set_column('K:K', 20, usdollar2)
+    worksheet.set_column('L:L', 20, usdollar)
 
 
     totalrows,totalcols=classicUsage.shape
