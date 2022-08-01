@@ -1,7 +1,7 @@
 certifi==2021.10.8
 chardet==4.0.0
 charset-normalizer==2.0.8
-click==7.1.2
+click==8.0.4
 et-xmlfile==1.1.0
 ibm-cos-sdk==2.11.0
 ibm-cos-sdk-core==2.11.0
