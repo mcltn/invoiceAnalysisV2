@@ -559,9 +559,12 @@ def createClassicCombined(classicUsage):
 
     if len(classicUsage) > 0:
         logging.info("Creating IaaS_Line_item_Detail Tab.")
-        iaasRecords = classicUsage.query('(RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID == [""]) or (RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"] '\
-                                         'or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
-                                         'or Description == ["Block Storage for VPC General Purpose Tier Gen2"]))')
+        #iaasRecords = classicUsage.query('(RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID == [""]) or (RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"] '\
+        #                                 'or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
+        #                                 'or Description == ["Block Storage for VPC General Purpose Tier Gen2"]))')
+        # VPC Storage now seperate line item as of July 2022
+        iaasRecords = classicUsage.query('(RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID == [""]) or (RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"]))')
+
         iaasSummary = pd.pivot_table(iaasRecords, index=["Type", "Category_Group", "Category", "Description"],
                                          values=["totalAmount"],
                                          columns=['IBM_Invoice_Month'],
@@ -630,13 +633,12 @@ def createIaaSInvoiceDetail(classicUsage):
                  "D01NIZX", "D01NJZX", "D022FZX", "D1VCRLL", "D1VCSLL",
                  "D1VCTLL", "D1VCULL", "D1VCVLL", "D1VCWLL", "D1VCXLL", "D1VCYLL", "D1VCZLL", "D1VD0LL", "D1VD1LL",
                  "D1VD2LL", "D1VD3LL", "D1VD4LL", "D1VD5LL", "D1VD6LL",
-                 "D1VD7LL", "D1VD8LL", "D1VD9LL", "D1VDALL", "D1YJMLL", "D20Y7LL", "D1VG4LL"]
-    # D1VG4LL = VPC Block which is consolidated into classic charges
+                 "D1VD7LL", "D1VD8LL", "D1VD9LL", "D1VDALL", "D1YJMLL", "D20Y7LL"]
+
+    # D1VG4LL = VPC Block which is no it's own line item starting July 2022
 
     if len(classicUsage) > 0:
         logging.info("Creating Platform Detail Tab.")
-        #childRecords = classicUsage.query('RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID != [""]'\
-        #                                  ' and INV_PRODID != ["D1VG4LL"] and INV_DIV != ["U7"]')
         childRecords = classicUsage.query('RecordType == ["Child"] and INV_PRODID != [""]'\
                                           ' and INV_PRODID not in @paasCodes')
 

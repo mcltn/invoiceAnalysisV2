@@ -36,7 +36,6 @@ One Excel worksheet is created with multiple tabs from the collected data (Class
 3. Next look at the Classic_COS_Custom tab, this is a breakdown of the custom charges for Classic Object Storage.  On the monthly invoice  This total should match the remaining line item.  Detail is provided for awareness, but will not appear on invoice.
 4. Last look at the Platform_Invoice_Detail tab,  this is a breakdown of all the Platform as a Service charges appearing on the second monthly invoice as "Platform as a Service"   The lines items should match this invoice.  Items with the same INV_PRODID will appear as one line item.
 
-
 ## Script Execution Instructions: _See alternate instructions for Code Engine._
 
 1. Install required packages.  
