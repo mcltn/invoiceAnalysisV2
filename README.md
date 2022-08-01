@@ -139,7 +139,7 @@ optional arguments:
    - ***COS_PIVOT*** is a consolidated pivot of the cost estimate by location, storageClass and metric
    average_archive_byte_hours
 
-*Metrics Charges Estimated*
+*Estimated Charges for billable metrics*
    - ***average_byte_hours*** This is an average storage usage, for which the **monthly** usage charge will be based on.  If the average stays the same over the whole month this amount will stay the same.  
    - ***bandwidth*** This is the **total** bandwidth (GB) month to date.  As bandwidth increases throughout a month this will increase as bandwidth increases.
    - ***classa*** This is the **total** number of class A transactions.   Usage charge is per 1000 transactions. As transactions icnrease charges will increase.
