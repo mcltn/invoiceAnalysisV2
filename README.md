@@ -135,7 +135,7 @@ optional arguments:
 ```
 ### Output Description (estimateCOS.py)
 *Excel Tab Explanation*
-   - ***Detail*** is a table of all billable metrics for each classic Object Storage instance.   Each row contains a unique location, class, and metric value with estimated cost.  Note Averag  
+   - ***Detail*** is a table of all month to date usage for billable metrics for each classic Object Storage instance.   Each row contains a unique location, class, and metric usage with estimated cost. 
    - ***COS_PIVOT*** is a consolidated pivot of the cost estimate by location, storageClass and metric
    average_archive_byte_hours
 
