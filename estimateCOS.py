@@ -12,20 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""
-usage: invoiceAnalysis.py [-h] [-k apikey] [-s YYYY-MM] [-e YYYY-MM] [-m MONTHS] [--COS_APIKEY COS_APIKEY] [--COS_ENDPOINT COS_ENDPOINT] [--COS_INSTANCE_CRN COS_INSTANCE_CRN] [--COS_BUCKET COS_BUCKET] [--sendGridApi SENDGRIDAPI]      ─╯
-                          [--sendGridTo SENDGRIDTO] [--sendGridFrom SENDGRIDFROM] [--sendGridSubject SENDGRIDSUBJECT] [--output OUTPUT] [--SL_PRIVATE | --no-SL_PRIVATE]
 
 
-"""
 __author__ = 'jonhall'
-import SoftLayer, os, logging, logging.config, json, calendar, os.path, argparse, pytz, base64, re
+import SoftLayer, os, logging, logging.config, json, os.path, argparse
 import pandas as pd
 import numpy as np
-from datetime import datetime, tzinfo, timezone
+from datetime import datetime
 from dateutil import tz
-from calendar import monthrange
-from dateutil.relativedelta import relativedelta
+
 
 
 def setup_logging(default_path='logging.json', default_level=logging.info, env_key='LOG_CFG'):
