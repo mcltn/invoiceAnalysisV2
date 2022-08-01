@@ -92,51 +92,62 @@ def getObjectStorageMetrics(objectStorageInstances, start, end):
                 if resource["storage_class"] == "cold":
                     if metric["name"] == "average_byte_hours":
                         gbused = float(metric["value"]) / 1073741824
+                        unit = "custom"
                         cost = estimateCost(gbused)
                     elif metric["name"] == "bandwidth":
                         gbused = float(metric["value"]) / 1073741824
-                        cost = float(gbused * 0.0425)
+                        unit = 0.0425
+                        cost = float(gbused * unit)
                     elif metric["name"] == "retrieval":
                         gbused = float(metric["value"]) / 1073741824
-                        cost = float(gbused * 0.0425)
+                        unit = 0.0425
+                        cost = float(gbused * unit)
                     elif metric["name"] == "classa":
                         # .02125 per 1000 transactions
                         gbused = 0
-                        cost  = (float(metric["value"]) / 1000) * 0.02125
+                        unit = 0.02125
+                        cost = (float(metric["value"]) / 1000) * unit
                     elif metric["name"] == "classb":
                         # .02125 per 10,000 transactions
                         gbused =0
-                        cost = (float(metric["value"]) / 10000) * 0.02125
+                        unit = 0.02125
+                        cost = (float(metric["value"]) / 10000) * unit
                     elif metric["name"] == "average_archive_byte_hours":
                         gbused = float(metric["value"]) / 1073741824
-                        cost = float(gbused * 0.0189)
+                        unit = 0.0189
+                        cost = float(gbused * unit)
                     else:
                         gbused = 0
                         cost =0
                 elif resource["storage_class"] == "standard":
                     if metric["name"] == "average_byte_hours":
                         gbused = float(metric["value"]) / 1073741824
-                        cost = gbused * 0.0189
+                        unit = 0.0189
+                        cost = gbused * unit
                     elif metric["name"] == "bandwidth":
                         gbused = float(metric["value"]) / 1073741824
-                        cost = float(gbused * .09)
+                        unit = 0.09
+                        cost = float(gbused * unit)
                     elif metric["name"] == "retrieval":
                         gbused = float(metric["value"]) / 1073741824
-                        cost = float(gbused * 0.0)
+                        unit = 0
+                        cost = float(gbused * unit)
                     elif metric["name"] == "classa":
                         # .02125 per 1000 transactions
                         gbused = 0
-                        cost  = float(metric["value"]) / 1000 * 0.005
+                        unit = 0.005
+                        cost  = float(metric["value"]) / 1000 * unit
                     elif metric["name"] == "classb":
                         # .02125 per 10,000 transactions
                         gbused =0
-                        cost = float(metric["value"]) / 10000 * 0.004
+                        unit = 0.004
+                        cost = float(metric["value"]) / 10000 * unit
                     else:
                         gbused = 0
                         cost =0
 
                 row = {"start": datetime.strftime(start, "%Y-%m-%d %H:%M:%S"), "end": datetime.strftime(end, "%Y-%m-%d %H:%M:%S"), "billingItemId": instance["billingItem"]["id"], "resourceId": resource["resource_id"], "storageLocation": resource["storage_location"],
-                       "storageClass": resource["storage_class"], "metric": metric["name"], "metricValue": float(metric["value"]), "GB": gbused, "estimate": cost}
+                       "storageClass": resource["storage_class"], "metric": metric["name"], "metricValue": float(metric["value"]), "GB": gbused, "unitPrice": unit,"estimate": cost}
 
                 data.append(row.copy())
 
@@ -149,6 +160,7 @@ def getObjectStorageMetrics(objectStorageInstances, start, end):
                                      'metric',
                                      'metricValue',
                                      'GB',
+                                     'unitPrice'
                                      'estimate'
                                      ])
 
