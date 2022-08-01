@@ -44,12 +44,12 @@ One Excel worksheet is created with multiple tabs from the collected data (Class
    - ***COS_PIVOT*** is a consolidated pivot of the cost estimate by location, storageClass and metric
    average_archive_byte_hours
 
-* Metrics Estiamted
-   - ***average_byte_hours** This is an estiamted average, for which the ***monthly*** usage charge will be based on.  
-   - ***bandwidth*** This is the total bandwidth (GB) month to date.  
-   - ***classa*** This is the total number of class A transactions.   Usage charge is per 1000 transactions
-   - ***classb*** This is the total number of class B transactions.   Usage charge is per 10,000 transactions
-   - ***retrieval*** This is the total data retreived (GB) month to date.  
+*Metrics Charges Estimated*
+   - ***average_byte_hours** This is an average usage, for which the **monthly** usage charge will be based on.  If the average stays the same over the whole month this amount will stay the same.  
+   - ***bandwidth*** This is the **total** bandwidth (GB) month to date.  As bandwidth increases throughout a month this will increase as bandwidth increases.
+   - ***classa*** This is the **total** number of class A transactions.   Usage charge is per 1000 transactions. As transactions icnrease charges will increase.
+   - ***classb*** This is the **total** number of class B transactions.   Usage charge is per 10,000 transactions. As transactions icnrease charges will increase.
+   - ***retrieval*** This is the **total** data retreived (GB) month to date.   As data retrival increases throughout a month this will increase as retrievals increase.
 
 
 ## Script Execution Instructions: _See alternate instructions for Code Engine._
