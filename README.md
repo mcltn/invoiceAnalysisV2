@@ -38,19 +38,6 @@ One Excel worksheet is created with multiple tabs from the collected data (Class
 3. Next look at the Classic_COS_Custom tab, this is a breakdown of the custom charges for Classic Object Storage.  On the monthly invoice  This total should match the remaining line item.  Detail is provided for awareness, but will not appear on invoice.
 4. Last look at the Platform_Invoice_Detail tab,  this is a breakdown of all the Platform as a Service charges appearing on the second monthly invoice as "Platform as a Service"   The lines items should match this invoice.  Items with the same INV_PRODID will appear as one line item.
 
-### estimateCOS.py Output
-*Excel Tab Explanation*
-   - ***Detail*** is a table of all billable metrics for each classic Object Storage instance.   Each row contains a unique location, class, and metric value with estimated cost.  Note Averag  
-   - ***COS_PIVOT*** is a consolidated pivot of the cost estimate by location, storageClass and metric
-   average_archive_byte_hours
-
-*Metrics Charges Estimated*
-   - ***average_byte_hours*** This is an average storage usage, for which the **monthly** usage charge will be based on.  If the average stays the same over the whole month this amount will stay the same.  
-   - ***bandwidth*** This is the **total** bandwidth (GB) month to date.  As bandwidth increases throughout a month this will increase as bandwidth increases.
-   - ***classa*** This is the **total** number of class A transactions.   Usage charge is per 1000 transactions. As transactions icnrease charges will increase.
-   - ***classb*** This is the **total** number of class B transactions.   Usage charge is per 10,000 transactions. As transactions icnrease charges will increase.
-   - ***retrieval*** This is the **total** data retreived (GB) month to date.   As data retrival increases throughout a month this will increase as retrievals increase.
-
 
 ## Script Execution Instructions: _See alternate instructions for Code Engine._
 
@@ -124,3 +111,37 @@ optional arguments:
 
 ```
 
+
+### Estimating Classic COS Usage
+
+```bazaar
+export IC_API_KEY=<ibm cloud apikey>
+python estimateCOS.py
+
+usage: estimateCOS.py [-h] [-k apikey][--output OUTPUT]
+                      [--SL_PRIVATE | --no-SL_PRIVATE]
+
+Forecast Classic Object Storage Stats.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -k apikey, --IC_API_KEY apikey
+                        IBM Cloud API Key
+
+  --output OUTPUT       Filename Excel output file. (including extension of .xlsx)
+  --SL_PRIVATE, --no-SL_PRIVATE
+                        Use IBM Cloud Classic Private API Endpoint (default: False)
+
+```
+### Output Description (estimateCOS.py)
+*Excel Tab Explanation*
+   - ***Detail*** is a table of all billable metrics for each classic Object Storage instance.   Each row contains a unique location, class, and metric value with estimated cost.  Note Averag  
+   - ***COS_PIVOT*** is a consolidated pivot of the cost estimate by location, storageClass and metric
+   average_archive_byte_hours
+
+*Metrics Charges Estimated*
+   - ***average_byte_hours*** This is an average storage usage, for which the **monthly** usage charge will be based on.  If the average stays the same over the whole month this amount will stay the same.  
+   - ***bandwidth*** This is the **total** bandwidth (GB) month to date.  As bandwidth increases throughout a month this will increase as bandwidth increases.
+   - ***classa*** This is the **total** number of class A transactions.   Usage charge is per 1000 transactions. As transactions icnrease charges will increase.
+   - ***classb*** This is the **total** number of class B transactions.   Usage charge is per 10,000 transactions. As transactions icnrease charges will increase.
+   - ***retrieval*** This is the **total** data retreived (GB) month to date.   As data retrival increases throughout a month this will increase as retrievals increase.
