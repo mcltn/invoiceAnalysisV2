@@ -166,12 +166,11 @@ optional arguments:
                         IBM Cloud API Key
 
   --output OUTPUT       Filename Excel output file. (including extension of .xlsx)
-
 ```
 ### Output Description (estimatePaaS.py)
 *Excel Tab Explanation*
    - ***Detail*** is a table of all month to date usage for billable metrics for each platform service.   Each row contains a unique service, resource, and metric with the rated usage and cost, and the resulting cost for discounted items.
    - ***PaaS_Summary*** is a pibot table showing the month to date estimated cost for each PaaS service.
    - ***PaaS_Metric_Summary*** is a pivot table showing the month to date usage and cost for each metric for each service instance and plan.
-<br>
-***Note*** This report shows current month to date usage and estimated cost, but these PaaS charges won't appear on an invoice until 60 days after month end.  For example: April usage charges are invoiced on the end of June invoice. 
+
+***Note:*** This report shows current month to date usage and estimated cost, but these PaaS charges won't appear on an invoice until 60 days after month end.  For example: April usage charges are invoiced on the end of June invoice. 
