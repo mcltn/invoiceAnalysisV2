@@ -182,7 +182,7 @@ def createSummaryPivot(paasUsage):
     worksheet.set_column("B:ZZ", 18, format1)
 
 def createPlanPivot(paasUsage):
-    paasSummaryPlan = pd.pivot_table(paasUsage, index=["resource_name", "plan_name", "unit_name"],
+    paasSummaryPlan = pd.pivot_table(paasUsage, index=["resource_name", "plan_name", "metric", "unit_name"],
                                  values=["quantity", "cost"],
                                  aggfunc=np.sum, margins=True, margins_name="Total",
                                  fill_value=0)
@@ -196,10 +196,9 @@ def createPlanPivot(paasUsage):
     worksheet.set_column("A:A", 30, format2)
     worksheet.set_column("B:B", 40, format2)
     worksheet.set_column("C:C", 40, format2)
-    worksheet.set_column("D:D", 15, format3)
-    worksheet.set_column("E:E", 15, format1)
-    totalrows,totalcols=paasSummaryPlan.shape
-    worksheet.autofilter(0,0,totalrows,totalcols)
+    worksheet.set_column("D:D", 40, format2)
+    worksheet.set_column("E:E", 15, format3)
+    worksheet.set_column("F:F", 15, format1)
 
     return
 
