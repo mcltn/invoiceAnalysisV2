@@ -18,7 +18,7 @@ __author__ = 'jonhall'
 import SoftLayer, os, logging, logging.config, json, os.path, argparse
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutil import tz
 
 
