@@ -6,7 +6,7 @@ In addition to consolidation of the detailed data,  pivot tables are created in 
 Script | Description
 ------ | -----------
 invoiceAnalysis.py | Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and PaaS Consumption.
-estimateCOS.py | Estimate current month usage month to current date & time
+estimateCOS.py | Estimate current month usage for Classic Object Storage from start of month to current date & time
 requirements.txt | Package requirements
 logging.json | LOGGER config used by script
 Dockerfile | Docker Build file used by code engine to build container.
