@@ -215,14 +215,14 @@ def createPivot(usage):
 
 if __name__ == "__main__":
     setup_logging()
-    parser = argparse.ArgumentParser(description="Forecast Classic Object Storage Stats.")
+    parser = argparse.ArgumentParser(description="Estimate Classic Object Storage Stats.")
     parser.add_argument("-k", "--IC_API_KEY", default=os.environ.get('IC_API_KEY', None), metavar="apikey", help="IBM Cloud API Key")
     parser.add_argument("-u", "--username", default=os.environ.get('ims_username', None), metavar="username", help="IMS Userid")
     parser.add_argument("-p", "--password", default=os.environ.get('ims_password', None), metavar="password", help="IMS Password")
     parser.add_argument("-a", "--account", default=os.environ.get('ims_account', None), metavar="account",
                         help="IMS Account")
     parser.add_argument("-y", "--yubikey", default=os.environ.get('yubikey', None), metavar="yubikey", help="IMS Yubi Key")
-    parser.add_argument("--output", default=os.environ.get('output','forecast-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
+    parser.add_argument("--output", default=os.environ.get('output','estimate-classic-cos.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
     parser.add_argument("--SL_PRIVATE", default=False, action=argparse.BooleanOptionalAction, help="Use IBM Cloud Classic Private API Endpoint")
     args = parser.parse_args()
 
@@ -258,7 +258,7 @@ if __name__ == "__main__":
     storage = getObjectStorageMetrics(objectStorageInstances, start, end)
 
     # Write dataframe to excel
-    writer = pd.ExcelWriter("estimate.xlsx", engine='xlsxwriter')
+    writer = pd.ExcelWriter(args.output, engine='xlsxwriter')
     workbook = writer.book
     createDetailTab(storage)
     createPivot(storage)

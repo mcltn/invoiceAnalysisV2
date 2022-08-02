@@ -6,7 +6,8 @@ In addition to consolidation of the detailed data,  pivot tables are created in 
 Script | Description
 ------ | -----------
 invoiceAnalysis.py | Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and PaaS Consumption.
-estimateCOS.py | Estimate current month usage for Classic Object Storage from start of month to current date & time
+estimateClassicCOS.py | Estimate current month usage for Classic Object Storage from start of month to current date & time
+estimatePaaS.py | Estimate current monbth usage for Platform as a Service from start of month to current date & time
 requirements.txt | Package requirements
 logging.json | LOGGER config used by script
 Dockerfile | Docker Build file used by code engine to build container.
@@ -119,9 +120,9 @@ optional arguments:
 
 ```bazaar
 export IC_API_KEY=<ibm cloud apikey>
-python estimateCOS.py
+python estimateClassicCOS.py
 
-usage: estimateCOS.py [-h] [-k apikey][--output OUTPUT]
+usage: estimateClassicCOS.py [-h] [-k apikey][--output OUTPUT]
                       [--SL_PRIVATE | --no-SL_PRIVATE]
 
 Forecast Classic Object Storage Stats.
@@ -148,3 +149,30 @@ optional arguments:
    - ***classa*** This is the **total** number of class A transactions.   Usage charge is per 1000 transactions. As transactions increases charges will increase.  You need to estimate additional usage to forecast accurately.
    - ***classb*** This is the **total** number of class B transactions.   Usage charge is per 10,000 transactions. As transactions increases charges will increase.  You need to estimate additional usage to forecast accurately.
    - ***retrieval*** This is the **total** data retrieved month to date.  As data retrieval increases charges will increase. You need to estimate additional usage to forecast accurately.
+
+### Estimating PaaS Usage
+
+```bazaar
+export IC_API_KEY=<ibm cloud apikey>
+python estimateCOS.py
+
+usage: estimatePaaS.py [-h] [-k apikey][--output OUTPUT]
+
+Estimate Platform as a Service Usage.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -k apikey, --IC_API_KEY apikey
+                        IBM Cloud API Key
+
+  --output OUTPUT       Filename Excel output file. (including extension of .xlsx)
+
+
+```
+### Output Description (estimatePaaS.py)
+*Excel Tab Explanation*
+   - ***Detail*** is a table of all month to date usage for billable metrics for each platform service.   Each row contains a unique service, resource, and metric with the rated usage and cost, and the resulting cost for discounted items.
+   - ***PaaS_Summary*** is a pibot table showing the month to date estimated cost for each PaaS service.
+   - ***PaaS_Metric_Summary*** is a pivot table showing the month to date usage and cost for each metric for each service instance and plan.
+<br>
+***Note*** This report shows current month to date usage and estimated cost, but these PaaS charges won't appear on an invoice until 60 days after month end.  For example: April usage charges are invoiced on the end of June invoice. 
