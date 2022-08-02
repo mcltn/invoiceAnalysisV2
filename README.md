@@ -20,9 +20,19 @@ Dockerfile | Docker Build file used by code engine to build container.
 
 
 ### Output Description (invoiceAnalysis.py)
-One Excel worksheet is created with multiple tabs from the collected data (Classic Invoices & PaaS Usage between start and end month specified).   _Tabs are only be created if there are related resources on the collected invoices._
+An Excel worksheet is created with multiple tabs from the collected data (Classic Invoices & PaaS Usage between start and end month specified).   _Tabs are only be created if there are related resources on the collected invoices._
 
-*Excel Tab Explanation*
+### Reconciliation Approach
+1. First Look at the IaaS_Invoice_Detail.  These are the line items that should be broken out on the monthly Infrastructure as a Service Invoice.   Items with the same INV_PRODID will appear as one line item.  If correct you should be able to match all but two line items on invoice.
+2. Next look at the Classic_IaaS_combined tab, this is a breakdown of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items.  Detail is provided for awareness, but will not appear on invoice.
+3. Next look at the Classic_COS_Custom tab, this is a breakdown of the custom charges for Classic Object Storage.  On the monthly invoice  This total should match the remaining line item.  Detail is provided for awareness, but will not appear on invoice.
+4. Last look at the Platform_Invoice_Detail tab,  this is a breakdown of all the Platform as a Service charges appearing on the second monthly invoice as "Platform as a Service"   The lines items should match this invoice.  Items with the same INV_PRODID will appear as one line item.
+<br><br>
+***Caveats***
+   - Items with the same INV_PRODID will appear as one line item on the invoice.   For most services this correlates to one usage metric, but several services combine metrics under on INV_PRODID and these will need to be summed on the ***IaaS_Invoice_Detail*** tab manually to match the line item on the invoice.
+   - If on the ***IaaS_Invoice_Detail*** tab you can't find a corresponding line item on the invoice (other than the items mentioned in step 1) it's likley that it was included with the ***Classic_IaaS_combined*** or vice-versa.
+
+### Excel Tabs Descriptions
    - ***Detail*** is a table of every invoice item (Parent and children) for all the collected invoices represented as one row each.  All invoice types are included, including CREDIT invoices.  The detail tab can be sorted or filtered to find specific dates, billing item id's, or specific services.  
    - ***InvoiceSummary*** is a table of all charges by product group and category for each month by invoice type. This tab can be used to understand changes in month-to-month usage.
    - ***CategorySummary*** is a table  of all charges by product group, category, and description (for example specific VSI sizes or Bare metal server types) to dig deeper into month to month usage changes.
@@ -32,14 +42,7 @@ One Excel worksheet is created with multiple tabs from the collected data (Class
    - ***Platform_Invoice_Detail*** is a table of all the Platform as a Service charges appearing on the  "Platform as a Service" invoice.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
 
 
-### Reconciliation Approach
-1. First Look at the IaaS_Invoice_Detail.  These are the line items that should be broken out on the monthly Infrastructure as a Service Invoice.   Items with the same INV_PRODID will appear as one line item.  If correct you should be able to match all but two line items on invoice.
-2. Next look at the Classic_IaaS_combined tab, this is a breakdown of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items.  Detail is provided for awareness, but will not appear on invoice.
-3. Next look at the Classic_COS_Custom tab, this is a breakdown of the custom charges for Classic Object Storage.  On the monthly invoice  This total should match the remaining line item.  Detail is provided for awareness, but will not appear on invoice.
-4. Last look at the Platform_Invoice_Detail tab,  this is a breakdown of all the Platform as a Service charges appearing on the second monthly invoice as "Platform as a Service"   The lines items should match this invoice.  Items with the same INV_PRODID will appear as one line item.
-
-
-## Script Execution Instructions: _See alternate instructions for Code Engine._
+## Script Execution Instructions
 
 1. Install required packages.  
 ````
@@ -64,7 +67,7 @@ pip install -r requirements.txt
 |--OUTPUT | OUTPUT | invoice-analysis.xlsx | Output file name used.
 |--SL_PRIVATE,--no_SL_PRIVATE | | --no_SL_PRIVATE | Whether to use Public or Private Endpoint.
 
-3. Run Python script (Python 3.9 required).</br>
+3. Run Python script (Python 3.9+ required).</br>
 
 ```bazaar
 export IC_API_KEY=<ibm cloud apikey>
@@ -140,8 +143,8 @@ optional arguments:
    average_archive_byte_hours
 
 *Estimated Charges for billable metrics*
-   - ***average_byte_hours*** This is an average storage usage, for which the **monthly** usage charge will be based on.  If the average stays the same over the whole month this amount will stay the same.  
-   - ***bandwidth*** This is the **total** bandwidth (GB) month to date.  As bandwidth increases throughout a month this will increase as bandwidth increases.
-   - ***classa*** This is the **total** number of class A transactions.   Usage charge is per 1000 transactions. As transactions icnrease charges will increase.
-   - ***classb*** This is the **total** number of class B transactions.   Usage charge is per 10,000 transactions. As transactions icnrease charges will increase.
-   - ***retrieval*** This is the **total** data retreived (GB) month to date.   As data retrival increases throughout a month this will increase as retrievals increase.
+   - ***average_byte_hours*** This is an average monthly storage usage to date, for which the **monthly** usage charge will be based on.  This is a month to date average so if the average stays consistent for the remaining period of the month this is a forecast of storage usage costs for the month. 
+   - ***bandwidth*** This is the **total** bandwidth (GB) month to date.  As bandwidth increases throughout a month this will increase as bandwidth usage increases.  You need to estimate additional usage to forecast accurately.
+   - ***classa*** This is the **total** number of class A transactions.   Usage charge is per 1000 transactions. As transactions increases charges will increase.  You need to estimate additional usage to forecast accurately.
+   - ***classb*** This is the **total** number of class B transactions.   Usage charge is per 10,000 transactions. As transactions increases charges will increase.  You need to estimate additional usage to forecast accurately.
+   - ***retrieval*** This is the **total** data retreived (GB) month to date.  As data retrieval increases charges will increase. You need to estimate additional usage to forecast accurately.
