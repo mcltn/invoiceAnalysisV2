@@ -137,7 +137,7 @@ optional arguments:
                         Use IBM Cloud Classic Private API Endpoint (default: False)
 
 ```
-### Output Description (estimateCOS.py)
+### Output Description
 *Excel Tab Explanation*
    - ***Detail*** is a table of all month to date usage for billable metrics for each classic Object Storage instance.   Each row contains a unique location, class, and metric usage with estimated cost. 
    - ***COS_PIVOT*** is a consolidated pivot of the cost estimate by location, storageClass and metric
@@ -154,7 +154,7 @@ optional arguments:
 
 ```bazaar
 export IC_API_KEY=<ibm cloud apikey>
-python estimateCOS.py
+python estimatePaaS.py
 
 usage: estimatePaaS.py [-h] [-k apikey][--output OUTPUT]
 
@@ -166,7 +166,6 @@ optional arguments:
                         IBM Cloud API Key
 
   --output OUTPUT       Filename Excel output file. (including extension of .xlsx)
-
 
 ```
 ### Output Description (estimatePaaS.py)
