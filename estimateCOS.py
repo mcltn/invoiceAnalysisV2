@@ -18,7 +18,7 @@ __author__ = 'jonhall'
 import SoftLayer, os, logging, logging.config, json, os.path, argparse
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import tz
 
 
@@ -50,7 +50,7 @@ def estimateCost(usage):
     """
     Estimate cost based on contractual calculation
     """
-    totalRecurringCharge = round(( usage * 0.75 * 0.00099) + (usage * 0.25 * 0.0051), 5)
+    totalRecurringCharge = (usage * 0.75 * 0.00099) + (usage * 0.25 * 0.0051)
     logging.info("Estimating Zenfolio Discounted usage for {} GB average COS usage at {}.".format(usage, totalRecurringCharge))
     return totalRecurringCharge
 
@@ -69,21 +69,14 @@ def getObjectStorageInstances():
         quit()
     return objectStorageInstances
 
-def getObjectStorageMetrics(objectStorageInstances, start, end):
+def getObjectStorageMetrics(objectStorageInstances, starttime, endtime):
     """
     # GET METRICS BETWEEN TWO TIMES FOR EACH OBJECT STORAGE INSTANCE
     """
-
-    logging.info("Using {} to {} for metrics.".format(start,end))
-
     data = []
+    logging.info("Using {} to {} for metrics.".format(starttime, endtime))
     for instance in objectStorageInstances:
-        """
-        Pull metrics
-        """
-
-        metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCloudObjectStorageMetrics(start.timestamp() * 1000,
-                    end.timestamp() * 1000, "us-south", "standard,cold,vault,flex", "average_byte_hours,bandwidth,retrieval,classa,classb,average_archive_byte_hours",
+        metrics = client["Network_Storage_Hub_Cleversafe_Account"].getCloudObjectStorageMetrics(starttime.timestamp() * 1000, endtime.timestamp() * 1000, "us-south", "standard,cold,vault,flex", "average_byte_hours,bandwidth,retrieval,classa,classb,average_archive_byte_hours",
                     id=instance["id"])
 
         metrics = json.loads(metrics[1])
@@ -91,63 +84,65 @@ def getObjectStorageMetrics(objectStorageInstances, start, end):
             for metric in resource["metrics"]:
                 if resource["storage_class"] == "cold":
                     if metric["name"] == "average_byte_hours":
-                        gbused = float(metric["value"]) / 1073741824
-                        unit = "( avg_byte_hours * 0.75 * 0.00099) + (avg_byte_hours * 0.25 * 0.0051)"
-                        cost = estimateCost(gbused)
+                        ratedUnits = float(metric["value"]) / 1073741824
+                        unitPrice = "( avg_byte_hours * 0.75 * 0.00099) + (avg_byte_hours * 0.25 * 0.0051)"
+                        estimate = estimateCost(ratedUnits)
                     elif metric["name"] == "bandwidth":
-                        gbused = float(metric["value"]) / 1073741824
-                        unit = 0.0425
-                        cost = float(gbused * unit)
+                        ratedUnits = float(metric["value"]) / 1073741824
+                        unitPrice = 0.0425
+                        estimate = ratedUnits * unitPrice
                     elif metric["name"] == "retrieval":
-                        gbused = float(metric["value"]) / 1073741824
-                        unit = 0.0425
-                        cost = float(gbused * unit)
+                        ratedUnits = float(metric["value"]) / 1073741824
+                        unitPrice = 0.0425
+                        estimate = ratedUnits * unitPrice
                     elif metric["name"] == "classa":
                         # .02125 per 1000 transactions
-                        gbused = 0
-                        unit = 0.02125
-                        cost = (float(metric["value"]) / 1000) * unit
+                        ratedUnits = float(metric["value"]) / 1000
+                        unitPrice = 0.02125
+                        estimate = ratedUnits * unitPrice
                     elif metric["name"] == "classb":
                         # .02125 per 10,000 transactions
-                        gbused =0
-                        unit = 0.02125
-                        cost = (float(metric["value"]) / 10000) * unit
+                        ratedUnits = float(metric["value"]) / 10000
+                        unitPrice = 0.02125
+                        estimate = ratedUnits * unitPrice
                     elif metric["name"] == "average_archive_byte_hours":
-                        gbused = float(metric["value"]) / 1073741824
-                        unit = 0.0189
-                        cost = float(gbused * unit)
+                        ratedUnits = float(metric["value"]) / 1073741824
+                        unitPrice = 0.0189
+                        estimate = ratedUnits * unitPrice
                     else:
-                        gbused = 0
-                        cost =0
+                        ratedUnits = 0
+                        unitPrice =0
+                        estimate = 0
                 elif resource["storage_class"] == "standard":
                     if metric["name"] == "average_byte_hours":
-                        gbused = float(metric["value"]) / 1073741824
-                        unit = 0.0189
-                        cost = gbused * unit
+                        ratedUnits = float(metric["value"]) / 1073741824
+                        unitPrice = 0.0189
+                        estimate = ratedUnits * unitPrice
                     elif metric["name"] == "bandwidth":
-                        gbused = float(metric["value"]) / 1073741824
-                        unit = 0.09
-                        cost = float(gbused * unit)
+                        ratedUnits = float(metric["value"]) / 1073741824
+                        unitPrice = 0.09
+                        estimate = ratedUnits * unitPrice
                     elif metric["name"] == "retrieval":
-                        gbused = float(metric["value"]) / 1073741824
-                        unit = 0
-                        cost = float(gbused * unit)
+                        ratedUnits = float(metric["value"]) / 1073741824
+                        unitPrice = 0
+                        estimate = ratedUnits * unitPrice
                     elif metric["name"] == "classa":
                         # .02125 per 1000 transactions
-                        gbused = 0
-                        unit = 0.005
-                        cost  = float(metric["value"]) / 1000 * unit
+                        ratedUnits = float(metric["value"]) / 1000
+                        unitPrice = 0.005
+                        estimate = ratedUnits * unitPrice
                     elif metric["name"] == "classb":
                         # .02125 per 10,000 transactions
-                        gbused =0
-                        unit = 0.004
-                        cost = float(metric["value"]) / 10000 * unit
+                        ratedUnits = float(metric["value"]) / 10000
+                        unitPrice = 0.004
+                        estimate = ratedUnits * unitPrice
                     else:
-                        gbused = 0
-                        cost = 0
+                        ratedUnits = 0
+                        unitPrice = 0
+                        estimate = ratedUnits * unitPrice
 
-                row = {"start": datetime.strftime(start, "%Y-%m-%d %H:%M:%S"), "end": datetime.strftime(end, "%Y-%m-%d %H:%M:%S"), "billingItemId": instance["billingItem"]["id"], "resourceId": resource["resource_id"], "storageLocation": resource["storage_location"],
-                       "storageClass": resource["storage_class"], "metric": metric["name"], "metricValue": float(metric["value"]), "GB": gbused, "unitPrice": unit, "estimate": cost}
+                row = {"start": datetime.strftime(starttime, "%Y-%m-%d %H:%M:%S%z"), "end": datetime.strftime(endtime, "%Y-%m-%d %H:%M:%S%z"), "billingItemId": instance["billingItem"]["id"], "resourceId": resource["resource_id"], "storageLocation": resource["storage_location"],
+                       "storageClass": resource["storage_class"], "metric": metric["name"], "metricValue": float(metric["value"]), "ratedUnits": ratedUnits, "unitPrice": unitPrice, "estimate": estimate}
 
                 data.append(row.copy())
 
@@ -159,7 +154,7 @@ def getObjectStorageMetrics(objectStorageInstances, start, end):
                                      'storageClass',
                                      'metric',
                                      'metricValue',
-                                     'GB',
+                                     'ratedUnits',
                                      'unitPrice',
                                      'estimate'
                                      ])
@@ -178,13 +173,15 @@ def createDetailTab(classicUsage):
     format3 = workbook.add_format({'num_format': '#,##0'})
     format4 = workbook.add_format({'num_format': '#,##0.00000'})
     worksheet = writer.sheets['Detail']
-    worksheet.set_column('B:D', 20, format2)
-    worksheet.set_column('E:E', 40, format2)
-    worksheet.set_column('F:H', 20, format2)
-    worksheet.set_column('I:I', 40, format3)
-    worksheet.set_column('J:J', 20, format4)
+    worksheet.set_column('B:C', 25, format2)
+    worksheet.set_column('D:D', 15, format2)
+    worksheet.set_column('E:E', 35, format2)
+    worksheet.set_column('F:G', 15, format2)
+    worksheet.set_column('H:H', 25, format2)
+    worksheet.set_column('I:I', 30, format3)
+    worksheet.set_column('J:J', 30, format4)
     worksheet.set_column('K:K', 20, usdollar2)
-    worksheet.set_column('L:L', 20, usdollar)
+    worksheet.set_column('L:L', 15, usdollar)
 
 
     totalrows,totalcols=classicUsage.shape
@@ -199,9 +196,9 @@ def createPivot(usage):
     logging.info("Creating Pivot Tab.")
 
     cosPivot = pd.pivot_table(usage, index=["storageLocation", "storageClass", "metric"],
-                                     values=["metricValue", "GB",  "estimate"],
+                                     values=["metricValue", "ratedUnits",  "estimate"],
                                      aggfunc=np.sum, margins=True, margins_name="Total")
-    column_order = ["metricValue", "GB", "estimate"]
+    column_order = ["metricValue", "ratedUnits", "estimate"]
     cosPivot = cosPivot.reindex(column_order, axis=1)
     cosPivot.to_excel(writer, 'COS_PIVOT')
     worksheet = writer.sheets['COS_PIVOT']
@@ -257,8 +254,7 @@ if __name__ == "__main__":
     objectStorageInstances = getObjectStorageInstances()
     dallas = tz.gettz('US/Central')
     end =datetime.now().astimezone(dallas)
-    start = datetime(end.year, end.month, 1,0,0).astimezone(dallas)
-
+    start = datetime(end.year, end.month, 1,0,0,0).astimezone(dallas)
     storage = getObjectStorageMetrics(objectStorageInstances, start, end)
 
     # Write dataframe to excel
