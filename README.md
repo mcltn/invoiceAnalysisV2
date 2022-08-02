@@ -147,4 +147,4 @@ optional arguments:
    - ***bandwidth*** This is the **total** bandwidth (GB) month to date.  As bandwidth increases throughout a month this will increase as bandwidth usage increases.  You need to estimate additional usage to forecast accurately.
    - ***classa*** This is the **total** number of class A transactions.   Usage charge is per 1000 transactions. As transactions increases charges will increase.  You need to estimate additional usage to forecast accurately.
    - ***classb*** This is the **total** number of class B transactions.   Usage charge is per 10,000 transactions. As transactions increases charges will increase.  You need to estimate additional usage to forecast accurately.
-   - ***retrieval*** This is the **total** data retreived (GB) month to date.  As data retrieval increases charges will increase. You need to estimate additional usage to forecast accurately.
+   - ***retrieval*** This is the **total** data retrieved month to date.  As data retrieval increases charges will increase. You need to estimate additional usage to forecast accurately.
