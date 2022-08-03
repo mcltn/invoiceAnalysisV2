@@ -10,7 +10,6 @@ estimateClassicCOS.py | Estimate current month usage for Classic Object Storage 
 estimatePaaS.py | Estimate current monbth usage for Platform as a Service from start of month to current date & time
 requirements.txt | Package requirements
 logging.json | LOGGER config used by script
-Dockerfile | Docker Build file used by code engine to build container.
 
 
 ### Identity & Access Management Requirements
