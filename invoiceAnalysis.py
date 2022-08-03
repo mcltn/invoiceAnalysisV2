@@ -107,13 +107,23 @@ def getInvoiceDates(startdate,enddate):
     enddate = datetime(int(enddate[0:4]),int(enddate[5:7]),20,0,0,0,tzinfo=dallas)
     return startdate, enddate
 
+def createEmployeeClient(end_point_employee, employee_user, passw, token):
+    """Creates a softlayer-python client that can make API requests for a given employee_user"""
+    client_noauth = SoftLayer.Client(endpoint_url=end_point_employee)
+    client_noauth.auth = None
+    employee = client_noauth['SoftLayer_User_Employee']
+    result = employee.performExternalAuthentication(employee_user, passw, token)
+    # Save result['hash'] somewhere to not have to login for every API request
+    client_employee = SoftLayer.employee_client(username=employee_user, access_token=result['hash'], endpoint_url=end_point_employee)
+    return client_employee
+
 def getInvoiceList(startdate, enddate):
     # GET LIST OF PORTAL INVOICES BETWEEN DATES USING CENTRAL (DALLAS) TIME
     dallas=tz.gettz('US/Central')
     logging.info("Looking up invoices from {} to {}.".format(startdate.strftime("%m/%d/%Y %H:%M:%S%z"), enddate.strftime("%m/%d/%Y %H:%M:%S%z")))
     # filter invoices based on local dallas time that correspond to CFTS UTC cutoff
     try:
-        invoiceList = client['Account'].getInvoices(mask='id,createDate,typeCode,invoiceTotalAmount,invoiceTotalRecurringAmount,invoiceTopLevelItemCount', filter={
+        invoiceList = client['Account'].getInvoices(id=ims_account, mask='id,createDate,typeCode,invoiceTotalAmount,invoiceTotalRecurringAmount,invoiceTopLevelItemCount', filter={
                 'invoices': {
                     'createDate': {
                         'operation': 'betweenDate',
@@ -136,6 +146,7 @@ def parseChildren(row, parentDescription, children):
     global data
 
     for child in children:
+        logging.debug(child)
         if float(child["recurringFee"]) > 0:
             row['RecordType'] = "Child"
             row["childBillingItemId"] = child["billingItemId"]
@@ -144,7 +155,7 @@ def parseChildren(row, parentDescription, children):
             if "group" in child["category"]:
                 row["Category_Group"] = child["category"]["group"]["name"]
             else:
-                row["Category_group"] = child['categoryGroup']
+                row["Category_group"] = child['category']['name']
             if row["Category_Group"] == "StorageLayer":
                 desc = child["description"].find(":")
                 if desc == -1:
@@ -155,8 +166,12 @@ def parseChildren(row, parentDescription, children):
                     row["Description"] = child["description"][0:desc]
                     if child["description"].find("API Requests") != -1:
                         row['childUsage'] = float(re.search("\d+", child["description"][desc:]).group())
+                    elif child["description"].find("Snapshot Space") != -1:
+                            row['childUsage'] = float(re.search("\d+", child["description"][desc:]).group())
+                    elif child["description"].find("Replication for tier") != -1:
+                            row['childUsage'] = 0
                     else:
-                        row['childUsage'] = float(re.search("\d+([\.,]\d+)", child["description"][desc:]).group())
+                            row['childUsage'] = float(re.search("\d+([\.,]\d+)", child["description"][desc:]).group())
             else:
                 desc = child["description"].find("- $")
                 if desc == -1:
@@ -194,7 +209,7 @@ def parseChildren(row, parentDescription, children):
             logging.debug(row)
     return
 
-def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
+def getInvoiceDetail(startdate, enddate):
     """
     Read invoice top level detail from range of invoices
     """
@@ -203,9 +218,6 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
     data = []
 
     dallas = tz.gettz('US/Central')
-
-    # Create Classic infra API client
-    client = SoftLayer.Client(username="apikey", api_key=IC_API_KEY, endpoint_url=SL_ENDPOINT)
 
     # get list of invoices between start month and endmonth
     invoiceList = getInvoiceList(startdate, enddate)
@@ -334,7 +346,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                         for child in item["children"]:
                             if "hourlyRecurringFee" in child:
                                 hourlyRecurringFee = hourlyRecurringFee + float(child['hourlyRecurringFee'])
-                        if hourlyRecurringFee>0:
+                        if hourlyRecurringFee > 0:
                             hours = round(float(recurringFee) / hourlyRecurringFee)
                         else:
                             hours = 0
@@ -347,7 +359,7 @@ def getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate):
                         description = model + " File Storage"
                     else:
                         if snapshot == "":
-                            description = model + " File Storage "+ space + " at " + tier
+                            description = model + " File Storage " + space + " at " + tier
                         else:
                             snapshotspace = getStorageServiceUsage('storage_snapshot_space', item["children"])
                             description = model + " File Storage " + space + " at " + tier + " with " + snapshotspace
@@ -450,7 +462,7 @@ def fixParentRecordsObjectStorage(df):
 
     months = df.IBM_Invoice_Month.unique()
     for i in months:
-        parents = df.query('Category_Group == "StorageLayer" and IBM_Invoice_Month == @i and RecordType == "Parent"')
+        parents = df.query('Category_Group == "StorageLayer" and Category == "Object Storage" and IBM_Invoice_Month == @i and RecordType == "Parent"')
         for row in parents.itertuples():
             index = row[0]
             billingItemId = row[9]
@@ -559,9 +571,6 @@ def createClassicCombined(classicUsage):
 
     if len(classicUsage) > 0:
         logging.info("Creating IaaS_Line_item_Detail Tab.")
-        #iaasRecords = classicUsage.query('(RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID == [""]) or (RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"] '\
-        #                                 'or Description == ["Block Storage for VPC 10 IOPS/GB Gen2"] or Description == ["Block Storage for VPC 5 IOPS/GB Gen2"]'\
-        #                                 'or Description == ["Block Storage for VPC General Purpose Tier Gen2"]))')
         # VPC Storage now seperate line item as of July 2022
         iaasRecords = classicUsage.query('(RecordType == ["Child"] and TaxCategory == ["PaaS"] and INV_PRODID == [""]) or (RecordType == ["Parent"] and Category != ["Object Storage"] and (TaxCategory == ["IaaS"] or TaxCategory == ["HELP DESK"]))')
 
@@ -604,13 +613,13 @@ def createPaaSInvoiceDetail(classicUsage):
     Build a pivot table of PaaS object storage
     """
 
-    if len(classicUsage) > 0:
-        logging.info("Creating PaaS_COS_Detail Tab.")
-        paasCodes = ["D01J5ZX","D01J6ZX","D01J7ZX","D01J8ZX","D01J9ZX","D01JAZX","D01JBZX","D01NGZX","D01NHZX","D01NIZX","D01NJZX","D022FZX","D1VCRLL","D1VCSLL",
-                     "D1VCTLL","D1VCULL","D1VCVLL","D1VCWLL","D1VCXLL","D1VCYLL","D1VCZLL","D1VD0LL","D1VD1LL","D1VD2LL","D1VD3LL","D1VD4LL","D1VD5LL","D1VD6LL",
-                     "D1VD7LL","D1VD8LL","D1VD9LL","D1VDALL","D1YJMLL","D20Y7LL"]
+    logging.info("Creating PaaS_COS_Detail Tab.")
+    paasCodes = ["D01J5ZX","D01J6ZX","D01J7ZX","D01J8ZX","D01J9ZX","D01JAZX","D01JBZX","D01NGZX","D01NHZX","D01NIZX","D01NJZX","D022FZX","D1VCRLL","D1VCSLL",
+                 "D1VCTLL","D1VCULL","D1VCVLL","D1VCWLL","D1VCXLL","D1VCYLL","D1VCZLL","D1VD0LL","D1VD1LL","D1VD2LL","D1VD3LL","D1VD4LL","D1VD5LL","D1VD6LL",
+                 "D1VD7LL","D1VD8LL","D1VD9LL","D1VDALL","D1YJMLL","D20Y7LL"]
 
-        paascosRecords = classicUsage.query('RecordType == ["Child"] and INV_PRODID in @paasCodes')
+    paascosRecords = classicUsage.query('RecordType == ["Child"] and INV_PRODID in @paasCodes')
+    if len(paascosRecords) > 0:
         paascosSummary = pd.pivot_table(paascosRecords, index=["INV_PRODID", "childParentProduct", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
@@ -637,11 +646,9 @@ def createIaaSInvoiceDetail(classicUsage):
 
     # D1VG4LL = VPC Block which is no it's own line item starting July 2022
 
-    if len(classicUsage) > 0:
-        logging.info("Creating Platform Detail Tab.")
-        childRecords = classicUsage.query('RecordType == ["Child"] and INV_PRODID != [""]'\
-                                          ' and INV_PRODID not in @paasCodes')
-
+    logging.info("Creating Platform Detail Tab.")
+    childRecords = classicUsage.query('RecordType == ["Child"] and INV_PRODID != [""] and INV_PRODID not in @paasCodes')
+    if len(childRecords) > 0:
         childSummary = pd.pivot_table(childRecords, index=["INV_PRODID", "childParentProduct", "Description"],
                                          values=["childTotalRecurringCharge"],
                                          columns=['IBM_Invoice_Month'],
@@ -729,6 +736,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and corresponding lsPaaS Consumption.")
     parser.add_argument("-k", "--IC_API_KEY", default=os.environ.get('IC_API_KEY', None), metavar="apikey", help="IBM Cloud API Key")
+    parser.add_argument("-u", "--username", default=os.environ.get('ims_username', None), metavar="username", help="IMS Userid")
+    parser.add_argument("-p", "--password", default=os.environ.get('ims_password', None), metavar="password", help="IMS Password")
+    parser.add_argument("-a", "--account", default=os.environ.get('ims_account', None), metavar="account", help="IMS Account")
     parser.add_argument("-s", "--startdate", default=os.environ.get('startdate', None), metavar="YYYY-MM", help="Start Year & Month in format YYYY-MM")
     parser.add_argument("-e", "--enddate", default=os.environ.get('enddate', None), metavar="YYYY-MM", help="End Year & Month in format YYYY-MM")
     parser.add_argument("-m", "--months", default=os.environ.get('months', None), help="Number of months including last full month to include in report.")
@@ -744,6 +754,37 @@ if __name__ == "__main__":
     parser.add_argument("--SL_PRIVATE", default=False, action=argparse.BooleanOptionalAction, help="Use IBM Cloud Classic Private API Endpoint")
 
     args = parser.parse_args()
+
+    # Change endpoint to private Endpoint if command line open chosen
+    if args.SL_PRIVATE:
+        SL_ENDPOINT = "https://api.service.softlayer.com/xmlrpc/v3.1"
+    else:
+        SL_ENDPOINT = "https://api.softlayer.com/xmlrpc/v3.1"
+
+    if args.IC_API_KEY == None:
+        if args.username == None or args.password == None or args.account == None:
+            logging.error("You must provide either IBM Cloud ApiKey or Internal Employee credentials & IMS account.")
+            quit()
+        else:
+            logging.info("Using Internal endpoint and employee credentials.")
+            ims_username = args.username
+            ims_password = args.password
+            ims_yubikey = input("Yubi Key:")
+            ims_account = args.account
+            SL_ENDPOINT = "http://internal.applb.dal10.softlayer.local/v3.1/internal/xmlrpc"
+            client = createEmployeeClient(SL_ENDPOINT, ims_username, ims_password, ims_yubikey)
+    else:
+        logging.info("Using IBM Cloud Account API Key.")
+        IC_API_KEY = args.IC_API_KEY
+        ims_account = None
+
+        # Change endpoint to private Endpoint if command line open chosen
+        if args.SL_PRIVATE:
+            SL_ENDPOINT = "https://api.service.softlayer.com/xmlrpc/v3.1"
+        else:
+            SL_ENDPOINT = "https://api.softlayer.com/xmlrpc/v3.1"
+        # Create Classic infra API client
+        client = SoftLayer.Client(username="apikey", api_key=IC_API_KEY, endpoint_url=SL_ENDPOINT)
 
     if args.months != None:
         months = int(args.months)
@@ -766,23 +807,11 @@ if __name__ == "__main__":
             startdate = args.startdate
             enddate = args.enddate
 
-    if args.IC_API_KEY == None:
-        logging.error("You must provide an IBM Cloud ApiKey with billing View authority to run script.")
-        quit()
-
-    IC_API_KEY = args.IC_API_KEY
-
     # Calculate invoice dates based on SLIC invoice cutoffs.
     startdate, enddate = getInvoiceDates(startdate, enddate)
 
-    # Change endpoint to private Endpoint if command line open chosen
-    if args.SL_PRIVATE:
-        SL_ENDPOINT = "https://api.service.softlayer.com/xmlrpc/v3.1"
-    else:
-        SL_ENDPOINT = "https://api.softlayer.com/xmlrpc/v3.1"
-
     #  Retrieve Invoices from classic
-    classicUsage = getInvoiceDetail(IC_API_KEY, SL_ENDPOINT, startdate, enddate)
+    classicUsage = getInvoiceDetail(startdate, enddate)
 
     """"
     Build Exel Report Report with Charges
