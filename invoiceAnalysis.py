@@ -557,119 +557,117 @@ def createType1Report(filename, classicUsage):
         Break out for CFTS type 1 detail for IaaS.  This covers accounts with single billing work number
         where the IaaS detail (NEW & RECURRING) broken out by cloud services vs VMware License
         Charges (both OS & VCS)
-        TODO Create one top sheet per month selected similiar to original (don't show columns by month as it doesn't make sense)
         """
-        logging.info("Creating IaaS CFTS Invoice Top Sheet tab.")
+        months = classicUsage.IBM_Invoice_Month.unique()
+        for i in months:
+            logging.info("Creating IaaS CFTS Invoice Top Sheet tab for {}.".format(i))
 
-        """
-        Start by Parsing NEW & ONE TIME & RECURRING IaaS Charges and split by COS, VMware, and all other IaaS Charges
-        """
-        allcharges = classicUsage.query(
-            'Type == "NEW" or Type == "ONE-TIME-CHARGE" or Type == "RECURRING" and (TaxCategory == "IaaS" or TaxCategory == "HELP DESK")').copy()
+            """
+            Start by Parsing NEW & ONE TIME & RECURRING IaaS Charges and split by COS, VMware, and all other IaaS Charges
+            """
+            allcharges = classicUsage.query(
+                'IBM_Invoice_Month == @i and (Type == "NEW" or Type == "ONE-TIME-CHARGE" or Type == "RECURRING") and (TaxCategory == "IaaS" or TaxCategory == "HELP DESK")').copy()
 
-        # Build Dataframe of VMWARE Licenses
-        vmwareSoftware = allcharges.query(
-            'RecordType == "Parent" and Category_Group == "Software" and Category == "Software License"').copy()
-        vmwareSoftware["Invoice_Line_Item_Description"] = "VMware Licensing"
+            # Build Dataframe of VMWARE Licenses
+            vmwareSoftware = allcharges.query(
+                'RecordType == "Parent" and Category_Group == "Software" and Category == "Software License"').copy()
+            vmwareSoftware["Invoice_Line_Item_Description"] = "VMware Licensing"
 
-        # Build Dataframe of metered OS VMware Licenses (from children records)
-        vmwareOS = allcharges.query('RecordType == "Child" and Category == "Operating System"').loc[
-            allcharges["OS"].str.contains("VMware Server")]
-        vmwareOS["Invoice_Line_Item_Description"] = "VMware Licensing"
+            # Build Dataframe of metered OS VMware Licenses (from children records)
+            vmwareOS = allcharges.query('RecordType == "Child" and Category == "Operating System"').loc[
+                allcharges["OS"].str.contains("VMware Server")]
+            vmwareOS["Invoice_Line_Item_Description"] = "VMware Licensing"
 
-        # Build Dataframe of all Classic Objet Storage line items
-        objectStorage = allcharges.query(
-            'RecordType == "Parent" and Category_Group == "StorageLayer" and Category == "Object Storage"').copy()
-        objectStorage["Invoice_Line_Item_Description"] = "Classic Cloud Object Storage Usage"
+            # Build Dataframe of all Classic Objet Storage line items
+            objectStorage = allcharges.query(
+                'RecordType == "Parent" and Category_Group == "StorageLayer" and Category == "Object Storage"').copy()
+            objectStorage["Invoice_Line_Item_Description"] = "Classic Cloud Object Storage Usage"
 
-        # combine dataframes into one new dataframe
-        iaas = pd.concat([vmwareSoftware, vmwareOS, objectStorage])
-        iaas["invoiceAmount"] = (
-                    iaas["totalRecurringCharge"] + iaas["childTotalRecurringCharge"] + iaas["totalOneTimeAmount"])
+            # combine dataframes into one new dataframe
+            iaas = pd.concat([vmwareSoftware, vmwareOS, objectStorage])
+            iaas["invoiceAmount"] = (
+                        iaas["totalRecurringCharge"] + iaas["childTotalRecurringCharge"] + iaas["totalOneTimeAmount"])
 
-        # exclude Object Storage and VMware Offering LIcense Fees
-        iaasRemaining = allcharges.query(
-            'RecordType == "Parent" and Category != "Object Storage" and Category != "Software License"').copy()
+            # exclude Object Storage and VMware Offering LIcense Fees
+            iaasRemaining = allcharges.query(
+                'RecordType == "Parent" and Category != "Object Storage" and Category != "Software License"').copy()
 
-        # Remove VMware OS licenses from server total recurring cost, as it's included in the above line item.
-        for index, row in iaasRemaining.iterrows():
-            if row["RecordType"] == "Parent" and row["Category"] == "Server":
-                # get corresponding child record and subtract OS license
-                billingItemId = row["BillingItemId"]
-                invoiceId = row["Portal_Invoice_Number"]
-                os = vmwareOS.query('BillingItemId == @billingItemId and Portal_Invoice_Number == @invoiceId')
-                logging.debug("os: {}".format(os))
-                if len(os) > 0:
-                    serverCost = row["totalRecurringCharge"]
-                    osCost = os["childTotalRecurringCharge"]
-                    logging.debug("row:{}".format(row))
-                    iaasRemaining.at[index, 'totalRecurringCharge'] = float(serverCost) - float(osCost)
+            # Remove VMware OS licenses from server total recurring cost, as it's included in the above line item.
+            for index, row in iaasRemaining.iterrows():
+                if row["RecordType"] == "Parent" and row["Category"] == "Server":
+                    # get corresponding child record and subtract OS license
+                    billingItemId = row["BillingItemId"]
+                    invoiceId = row["Portal_Invoice_Number"]
+                    os = vmwareOS.query('BillingItemId == @billingItemId and Portal_Invoice_Number == @invoiceId')
+                    logging.debug("os: {}".format(os))
+                    if len(os) > 0:
+                        serverCost = row["totalRecurringCharge"]
+                        osCost = os["childTotalRecurringCharge"]
+                        logging.debug("row:{}".format(row))
+                        iaasRemaining.at[index, 'totalRecurringCharge'] = float(serverCost) - float(osCost)
 
-        iaasRemaining["invoiceAmount"] = (iaasRemaining["totalRecurringCharge"] + iaasRemaining["totalOneTimeAmount"])
-        iaasRemaining["Invoice_Line_Item_Description"] = "Infrastructure-as-a-Service Other"
+            iaasRemaining["invoiceAmount"] = (iaasRemaining["totalRecurringCharge"] + iaasRemaining["totalOneTimeAmount"])
+            iaasRemaining["Invoice_Line_Item_Description"] = "Infrastructure-as-a-Service Other"
 
-        """
-        Build new dataframe for VMware + COS
-        """
-        table1 = iaas.groupby(["Type",
-                               "Portal_Invoice_Number",
-                               "Portal_Invoice_Date",
-                               "Service_Date_Start",
-                               "Service_Date_End",
-                               'IBM_Invoice_Month',
-                               "Invoice_Line_Item_Description", "Category", "Description"
-                               ])["invoiceAmount"].sum().reset_index()
+            """
+            Build new dataframe for VMware + COS
+            """
+            table1 = iaas.groupby(["Type",
+                                   "Portal_Invoice_Number",
+                                   "Portal_Invoice_Date",
+                                   "Service_Date_Start",
+                                   "Service_Date_End",
+                                   'IBM_Invoice_Month',
+                                   "Invoice_Line_Item_Description", "Category", "Description"
+                                   ])["invoiceAmount"].sum().reset_index()
 
-        # build table for other
-        table2 = iaasRemaining.groupby(["Type",
-                                        "Portal_Invoice_Number",
-                                        "Portal_Invoice_Date",
-                                        "Service_Date_Start",
-                                        "Service_Date_End",
-                                        "IBM_Invoice_Month",
-                                        "Invoice_Line_Item_Description", "Category", "Description"
-                                        ])["invoiceAmount"].sum().reset_index()
+            # build table for other
+            table2 = iaasRemaining.groupby(["Type",
+                                            "Portal_Invoice_Number",
+                                            "Portal_Invoice_Date",
+                                            "Service_Date_Start",
+                                            "Service_Date_End",
+                                            "IBM_Invoice_Month",
+                                            "Invoice_Line_Item_Description", "Category", "Description"
+                                            ])["invoiceAmount"].sum().reset_index()
 
-        lineitems = pd.concat([table1, table2])
+            lineitems = pd.concat([table1, table2])
 
-        """
-        Build pivot tab for the line items on the IaaS Invoice.
-        Summary Tab has line items to match CFTS invoice
-        Detail Tab has additional level of detail to help reconcile
-        """
+            """
+            Build pivot tab for the line items on the IaaS Invoice.
+            Summary Tab has line items to match CFTS invoice
+            Detail Tab has additional level of detail to help reconcile
+            """
 
-        iaasInvoice = pd.pivot_table(lineitems, index=["Portal_Invoice_Number", "Type", "Portal_Invoice_Date",
-                                                       "Invoice_Line_Item_Description"],
-                                     columns=['IBM_Invoice_Month'],
-                                     values=["invoiceAmount"],
-                                     aggfunc=np.sum, margins=True, margins_name="Total",
-                                     fill_value=0)
+            iaasInvoice = pd.pivot_table(lineitems, index=["Portal_Invoice_Number", "Type", "Portal_Invoice_Date",
+                                                           "Invoice_Line_Item_Description"],
+                                         values=["invoiceAmount"],
+                                         aggfunc=np.sum, margins=True, margins_name="Total",
+                                         fill_value=0)
 
-        iaasInvoice.to_excel(writer, 'IaaS_Invoice')
-        worksheet = writer.sheets['IaaS_Invoice']
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:A", 20, format2)
-        worksheet.set_column("B:C", 25, format2)
-        worksheet.set_column("D:D", 50, format2)
-        worksheet.set_column("E:ZZ", 18, format1)
+            iaasInvoice.to_excel(writer, 'IaaS_{}'.format(i))
+            worksheet = writer.sheets['IaaS_{}'.format(i)]
+            format1 = workbook.add_format({'num_format': '$#,##0.00'})
+            format2 = workbook.add_format({'align': 'left'})
+            worksheet.set_column("A:A", 20, format2)
+            worksheet.set_column("B:C", 25, format2)
+            worksheet.set_column("D:D", 50, format2)
+            worksheet.set_column("E:ZZ", 18, format1)
 
-        iaasInvoiceDetail = pd.pivot_table(lineitems, index=["Type", "Portal_Invoice_Number", "Portal_Invoice_Date", "Service_Date_Start",
-                                                              "Service_Date_End","Invoice_Line_Item_Description", "Category"],
-                                           columns=['IBM_Invoice_Month'],
-                                           values=["invoiceAmount"],
-                                           aggfunc=np.sum, margins=True, margins_name="Total",
-                                           fill_value=0)
+            iaasInvoiceDetail = pd.pivot_table(lineitems, index=["Type", "Portal_Invoice_Number", "Portal_Invoice_Date", "Service_Date_Start",
+                                                                  "Service_Date_End","Invoice_Line_Item_Description", "Category"],
+                                               values=["invoiceAmount"],
+                                               aggfunc=np.sum, margins=True, margins_name="Total",
+                                               fill_value=0)
 
-        iaasInvoiceDetail.to_excel(writer, 'IaaS_Invoice_Detail')
-        worksheet = writer.sheets['IaaS_Invoice_Detail']
-        format1 = workbook.add_format({'num_format': '$#,##0.00'})
-        format2 = workbook.add_format({'align': 'left'})
-        worksheet.set_column("A:E", 20, format2)
-        worksheet.set_column("F:F", 40, format2)
-        worksheet.set_column("G:G", 40, format2)
-        worksheet.set_column("H:ZZ", 18, format1)
-
+            iaasInvoiceDetail.to_excel(writer, 'IaaS_Detail_{}'.format(i))
+            worksheet = writer.sheets['IaaS_Detail_{}'.format(i)]
+            format1 = workbook.add_format({'num_format': '$#,##0.00'})
+            format2 = workbook.add_format({'align': 'left'})
+            worksheet.set_column("A:E", 20, format2)
+            worksheet.set_column("F:F", 40, format2)
+            worksheet.set_column("G:G", 40, format2)
+            worksheet.set_column("H:ZZ", 18, format1)
         return
 
     def createPaasTopSheet(classicUsage):
@@ -684,27 +682,49 @@ def createType1Report(filename, classicUsage):
                      "D1VD7LL", "D1VD8LL", "D1VD9LL", "D1VDALL", "D1YJMLL", "D20Y7LL"]
 
         # D1VG4LL = VPC Block which is no it's own line item starting July 2022
+        months = classicUsage.IBM_Invoice_Month.unique()
+        for i in months:
+            logging.info("Creating PaaS Invoice Top Sheet Tab for {}.".format(i))
+            childRecords = classicUsage.query(
+                'IBM_Invoice_Month == @i and RecordType == ["Child"] and INV_PRODID != [""] and INV_PRODID not in @paasCodes')
 
-        logging.info("Creating PaaS Invoice Top Sheet Tab.")
-        childRecords = classicUsage.query(
-            'RecordType == ["Child"] and INV_PRODID != [""] and INV_PRODID not in @paasCodes')
+            if len(childRecords) > 0:
+                childSummary = pd.pivot_table(childRecords,
+                                              index=["Portal_Invoice_Number", "Portal_Invoice_Date",  "Service_Date_Start",
+                                                    "Service_Date_End", "INV_PRODID", "childParentProduct"],
+                                              values=["childTotalRecurringCharge"],
+                                              aggfunc={'childTotalRecurringCharge': np.sum}, margins=True,
+                                              margins_name="Total", fill_value=0)
 
-        if len(childRecords) > 0:
-            childSummary = pd.pivot_table(childRecords,
-                                          index=["Portal_Invoice_Number", "Portal_Invoice_Date",  "Service_Date_Start",
-                                                "Service_Date_End", "INV_PRODID", "childParentProduct"],
-                                          values=["childTotalRecurringCharge"],
-                                          columns=['IBM_Invoice_Month'],
-                                          aggfunc={'childTotalRecurringCharge': np.sum}, margins=True,
-                                          margins_name="Total", fill_value=0)
+                childSummary.to_excel(writer, 'PaaS_{}'.format(i))
+                worksheet = writer.sheets['PaaS_{}'.format(i)]
+                format1 = workbook.add_format({'num_format': '$#,##0.00'})
+                format2 = workbook.add_format({'align': 'left'})
+                worksheet.set_column("A:E", 20, format2)
+                worksheet.set_column("F:F", 50, format2)
+                worksheet.set_column("G:ZZ", 18, format1)
+        return
+    
+    def createCreditTopSheet(classicUsage):
+        """
+        Build a pivot table Credit Invoices
+        """
+        months = classicUsage.IBM_Invoice_Month.unique()
+        for i in months:
+            creditItems = classicUsage.query('IBM_Invoice_Month == @i and Type == "CREDIT"')
 
-            childSummary.to_excel(writer, 'PaaS_Invoice')
-            worksheet = writer.sheets['PaaS_Invoice']
-            format1 = workbook.add_format({'num_format': '$#,##0.00'})
-            format2 = workbook.add_format({'align': 'left'})
-            worksheet.set_column("A:E", 20, format2)
-            worksheet.set_column("F:F", 50, format2)
-            worksheet.set_column("G:ZZ", 18, format1)
+            if len(creditItems) > 0:
+                logging.info("Creating Credit Invoice Tab for {}.".format(i))
+                pivot = pd.pivot_table(creditItems, index=["Portal_Invoice_Number", "Type", "Portal_Invoice_Date"],
+                                             values=["totalAmount"],
+                                             aggfunc=np.sum, margins=True, margins_name="Total",
+                                             fill_value=0)
+                pivot.to_excel(writer, 'Credit_{}'.format(i))
+                worksheet = writer.sheets['Credit_{}'.format(i)]
+                format1 = workbook.add_format({'num_format': '$#,##0.00'})
+                format2 = workbook.add_format({'align': 'left'})
+                worksheet.set_column("A:C", 20, format2)
+                worksheet.set_column("D:ZZ", 18, format1)
         return
 
     def createCategoryGroup(classicUsage):
@@ -792,7 +812,6 @@ def createType1Report(filename, classicUsage):
         if len(paascosRecords) > 0:
             paascosSummary = pd.pivot_table(paascosRecords, index=["INV_PRODID", "childParentProduct", "Description"],
                                             values=["childTotalRecurringCharge"],
-                                            columns=['IBM_Invoice_Month'],
                                             aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True,
                                             margins_name="Total")
             paascosSummary.to_excel(writer, 'PaaS_Invoice_Detail')
@@ -802,28 +821,6 @@ def createType1Report(filename, classicUsage):
             worksheet.set_column("A:A", 20, format2)
             worksheet.set_column("B:B", 40, format2)
             worksheet.set_column("C:C", 60, format2)
-            worksheet.set_column("D:ZZ", 18, format1)
-        return
-
-    def createCreditInvoice(classicUsage):
-        """
-        Build a pivot table Credit Invoices
-        """
-
-        creditItems = classicUsage.query('Type == "CREDIT"')
-
-        if len(creditItems) > 0:
-            logging.info("Creating Credit Invoice Tab.")
-            pivot = pd.pivot_table(creditItems, index=["Portal_Invoice_Number", "Type", "Portal_Invoice_Date"],
-                                         columns=['IBM_Invoice_Month'],
-                                         values=["totalAmount"],
-                                         aggfunc=np.sum, margins=True, margins_name="Total",
-                                         fill_value=0)
-            pivot.to_excel(writer, 'Credit_Invoice')
-            worksheet = writer.sheets['Credit_Invoice']
-            format1 = workbook.add_format({'num_format': '$#,##0.00'})
-            format2 = workbook.add_format({'align': 'left'})
-            worksheet.set_column("A:C", 20, format2)
             worksheet.set_column("D:ZZ", 18, format1)
         return
 
@@ -954,19 +951,32 @@ def createType1Report(filename, classicUsage):
     """
     if len(classicUsage) > 0:
         createDetailTab(classicUsage)
+        """
+        Create IaaS, PaaS, and Credit Top Sheets to match
+        each month's CFTS invoices generated
+        """
         createIaasTopSheet(classicUsage)
         createPaasTopSheet(classicUsage)
-        createCreditInvoice(classicUsage)
+        createCreditTopSheet(classicUsage)
+        """
+        Create additional Detail to help understand
+        month to month usage
+        """
         createCategoryGroup(classicUsage)
         createCategoryDetail(classicUsage)
         createPaaSInvoiceDetail(classicUsage)
+        createClassicCOS(classicUsage)
         createHourlyVirtualServers(classicUsage)
         createMonthlyVirtualServers(classicUsage)
         createHourlyBareMetalServers(classicUsage)
         createMonthlyBareMetalServers(classicUsage)
+        """
+        if --storage specified on command line provide
+        additional mapping of current storage comments to billing
+        records
+        """
         if storageFlag:
             createStorageTab(classicUsage)
-            createClassicCOS(classicUsage)
     writer.save()
     return
 
