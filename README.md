@@ -1,6 +1,7 @@
 # IBM Cloud Classic Infrastructure Invoice Analysis Report V2
-*invoiceAnalysis.py* collects IBM Cloud Classic Infrastructure NEW, RECURRING, and CREDIT invoices including PaaS Usage between months specified in the parameters consolidates the data into an Excel worksheet for billing and usage analysis. 
-In addition to consolidation of the detailed data,  pivot tables are created in Excel tabs to assist with understanding account usage.
+*invoiceAnalysis.py* collects IBM Cloud Classic Infrastructure NEW, RECURRING, ONE-TIME-CHARGES and CREDIT invoices between the months
+specified, then consolidates the data into an Excel worksheet for billing analysis.  In addition to consolidation of the detailed data and
+formatting consistent with SLIC/CFTS invoices, pivot tables are created to aid in reconiliation of those invoices released each month.
 
 ### Required Files
 Script | Description
@@ -12,10 +13,11 @@ logging.json | LOGGER config used by script
 
 
 ### Identity & Access Management Requirements
-| APIKEY | Description | Min Access Permissions
-| ------ | ----------- | ----------------------
-| IBM Cloud API Key | API Key used to pull classic and PaaS invoices and Usage Reports. | IAM Billing Viewer Role
-| COS API Key | API Key used to write output to specified bucket (if specified) | COS Bucket Write access to Bucket at specified Object Storage CRN.
+| APIKEY                                     | Description                                                               | Min Access Permissions
+|--------------------------------------------|---------------------------------------------------------------------------| ----------------------
+| IBM Cloud API Key                          | API Key used to pull classic and PaaS invoices and Usage Reports.         | IAM Billing Viewer Role
+| COS API Key                                | API Key used to write output to specified bucket (if specified)           | COS Bucket Write access to Bucket at specified Object Storage CRN.
+| ims_username, ims_password<br/>ims_account | Credentials for internal IMS access.  | IMS Access to Account|
 
 
 ### Output Description (invoiceAnalysis.py)
@@ -88,7 +90,9 @@ Methodology for reconciliation
 ````
 $ pip install -r requirements.txt
 ````
-2. IF you desire to use your Internal IMS user/password/yubikey access you must manually uninstall the SoftLayer SDK and manually build the internal SDK.
+2. For Internal IMS user/password/yubikey access you must manually uninstall the SoftLayer SDK and manually build the internal SDK for the script
+to function properly.  Additionally, you must be connected via Global Protect VPN while running reports and will be prompted for your 2FA yubikey.
+each time you run the script.  [Instructions](https://github.ibm.com/SoftLayer/internal-softlayer-cli)
 ```azure
 $ pip uninstall SoftLayer
 $ git clone https://github.ibm.com/SoftLayer/internal-softlayer-cli
@@ -197,7 +201,7 @@ optional arguments:
   --output OUTPUT       Filename Excel output file. (including extension of .xlsx)
 ```
 ### Output Description for estimateCloudUsage.py
-Note this shows current month usage.  For SLIC/CFTS invoices, this actual usage from IBM Cloud will be consolidated onto the classic RECURRING invoice
+Note this shows current month usage only.  For SLIC/CFTS invoices, this actual usage from IBM Cloud will be consolidated onto the classic RECURRING invoice
 one month later, and be invoiced on the SLIC/CFTS invoice at the end of that month.  (i.e. April Usage, appears on the June 1st RECURRING invoice, and will
 appear on the end of June SLIC/CFTS invoice)  Additionally in most cases for SLIC accounts, discounts are applied at the time the data is fed to the RECURRING
 invoice.  Other words the USAGE charges are generally list price, but eppear on the Portal RECURRING invoice at their discounted rate.
