@@ -1036,7 +1036,7 @@ def createType2Report(filename, classicUsage):
         tab name CategorySummary
         """
     
-        if len(classicUsage)>0:
+        if len(classicUsage) > 0:
             logging.info("Creating CategorySummary Tab.")
             parentRecords = classicUsage.query('RecordType == ["Parent"]')
             categorySummary = pd.pivot_table(parentRecords, index=["Type", "Category_Group", "Category", "Description"],
@@ -1079,21 +1079,21 @@ def createType2Report(filename, classicUsage):
         """
         Build a pivot table of Classic Object Storage that displays charges appearing on CFTS invoice
         """
-    
         if len(classicUsage) > 0:
-            logging.info("Creating Classic_COS_Detail Tab.")
-            iaasscosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage - S3 API"]')
-            iaascosSummary = pd.pivot_table(iaasscosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
-                                             values=["childTotalRecurringCharge"],
-                                             columns=['IBM_Invoice_Month'],
-                                             aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True, margins_name="Total")
-            iaascosSummary.to_excel(writer, 'Classic_COS_Detail')
-            worksheet = writer.sheets['Classic_COS_Detail']
-            format1 = workbook.add_format({'num_format': '$#,##0.00'})
-            format2 = workbook.add_format({'align': 'left'})
-            worksheet.set_column("A:A", 20, format2)
-            worksheet.set_column("B:E", 40, format2)
-            worksheet.set_column("F:ZZ", 18, format1)
+            iaascosRecords = classicUsage.query('RecordType == ["Child"] and childParentProduct == ["Cloud Object Storage - S3 API"]')
+            if len(iaascosRecords) > 0:
+                logging.info("Creating Classic_COS_Detail Tab.")
+                iaascosSummary = pd.pivot_table(iaascosRecords, index=["Type", "Category_Group", "childParentProduct", "Category", "Description"],
+                                                 values=["childTotalRecurringCharge"],
+                                                 columns=['IBM_Invoice_Month'],
+                                                 aggfunc={'childTotalRecurringCharge': np.sum}, fill_value=0, margins=True, margins_name="Total")
+                iaascosSummary.to_excel(writer, 'Classic_COS_Detail')
+                worksheet = writer.sheets['Classic_COS_Detail']
+                format1 = workbook.add_format({'num_format': '$#,##0.00'})
+                format2 = workbook.add_format({'align': 'left'})
+                worksheet.set_column("A:A", 20, format2)
+                worksheet.set_column("B:E", 40, format2)
+                worksheet.set_column("F:ZZ", 18, format1)
         return
     
     def createPaaSInvoiceDetail(classicUsage):
