@@ -54,8 +54,8 @@ detail tab and Virtual and Baremetal pivot tabs to compare month to month change
 
    ***example:*** to provide the 3 latest months of detail
    ```bazaar
-   export IC_API_KEY=<ibm cloud apikey>
-   python invoiceAnalysis.py -m 3
+   $ export IC_API_KEY=<ibm cloud apikey>
+   $ python invoiceAnalysis.py -m 3
    ```
 
 ### Type 2 (less common) Reconciliation Approach (specify --type2 on command line to generate this output)
@@ -78,10 +78,10 @@ Methodology for reconciliation
    - Items with the same INV_PRODID will appear as one line item on the invoice.   For most services this correlates to one usage metric, but several services combine metrics under on INV_PRODID and these will need to be summed on the ***IaaS_Invoice_Detail*** tab manually to match the line item on the invoice.
    - If on the ***IaaS_Invoice_Detail*** tab you can't find a corresponding line item on the invoice (other than the items mentioned in step 1) it's likley that it was included with the ***Classic_IaaS_combined*** or vice-versa.
 
-   example to provide the 3 latest months of detail
+   ***example:*** to provide the 3 latest months of detail
    ```bazaar
-   export IC_API_KEY=<ibm cloud apikey>
-   python invoiceAnalysis.py -m 3 --type2
+   $ export IC_API_KEY=<ibm cloud apikey>
+   $ python invoiceAnalysis.py -m 3 --type2
    ```
 
 ## Script Execution Instructions
