@@ -1,13 +1,12 @@
-# IBM Cloud Classic Infrastructure Invoice Analysis Report for Zenfolio
+# IBM Cloud Classic Infrastructure Invoice Analysis Report V2
 *invoiceAnalysis.py* collects IBM Cloud Classic Infrastructure NEW, RECURRING, and CREDIT invoices including PaaS Usage between months specified in the parameters consolidates the data into an Excel worksheet for billing and usage analysis. 
 In addition to consolidation of the detailed data,  pivot tables are created in Excel tabs to assist with understanding account usage.
 
 ### Required Files
 Script | Description
 ------ | -----------
-invoiceAnalysis.py | Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and PaaS Consumption.
-estimateClassicCOS.py | Estimate current month usage for Classic Object Storage from start of month to current date & time
-estimatePaaS.py | Estimate current monbth usage for Platform as a Service from start of month to current date & time
+invoiceAnalysis.py | Export usage detail by SLIC invoice month to an Excel file for all IBM Cloud Classic invoices.
+estimateCloudUSage.py | Estimate current monbth usage for Platform as a Service from start of month to current date & time
 requirements.txt | Package requirements
 logging.json | LOGGER config used by script
 
@@ -20,9 +19,46 @@ logging.json | LOGGER config used by script
 
 
 ### Output Description (invoiceAnalysis.py)
-An Excel worksheet is created with multiple tabs from the collected data (Classic Invoices & PaaS Usage between start and end month specified).   _Tabs are only be created if there are related resources on the collected invoices._
+An Excel worksheet is created with multiple tabs from the collected data from the IBM Cloud Classic Invoices, which will include PaaS usage for the purpose of reconciliation of charges.   _Tabs are only be created if there are related resources on the collected invoices._
+In general SLIC Invoice Month contains all RECURRING, NEW, ONE-TIME-CHARGE, and CREDIT invoices between the 20th of the previous month and the 19th of the current month.  PaaS Usage appears on the RECURRING invoice one month delayed and
+as such won't appear on a SLIC/CFTS invoice for roughly 60 days. (i.e April PaaS Usage, will appear on the June 1st, RECURRING invoice and be on the end of June SLIC/CFTS invoice.
 
-### Reconciliation Approach
+Up to 3 SLIC/CFTS Invoices will be generated each month.  One for IaaS charges, one for PaaS Charges, and one for Credit Charges.  Depending on how the SLIC account is configured and whether there are manual billing processes the
+definition of PaaS can change and how the charges are displayed on the SLIC/CFTS invoice changes.  These are described below as Type 1 or Type 2.
+
+### Type 1 (most common) Reconciliation Approach (Default Output)
+
+Detail tab has every invoice item for all the collected invoices represented as one row each. For invoices with multiple items, each row represents one top level invoice item. All invoice types are included, including CREDIT invoices. The detail tab can be sorted or filtered to find specific dates, billing item id's, or specific services.
+- One tab for each month specified.
+  - IaaS-YYYY-MM tab(s) map each portal invoices IaaS Charges included in that months SLIC/CFTS invoice.  IaaS Charges are split into three categories VMware LIcense Charges, Class COS Charges, and All other Classic IaaS Charges, these amounts should match the SLIC/CFTS invoice.
+  - IaaS-YYYY-MM tab(s) provide a more detailed breakdown of the IaaS charges, and particular Other Classic IaaS Charges from the IaaS-YYYY-MM tab.   This is information, but only the total will match the SLIC/CFTS invoice.
+  - PaaS-YYYY-MM tab(s) map each portal invoices PaaS Charges included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for portal invoice (always the RECURRING), though the detail is provided at a service level on this tab.  PaaS charges are for usage 60 days in arrears
+  - Credit-YYYY-MM tab(s) map each portal invoices Credits to their corresponding IBM CFTS invoice(s) they are credits on. 
+- Each will provide a column for each month specified.   These tabs are for informational purposes to help understand month to month charges and don't directly match the SLIC/CFTS invoice.
+  - CategoryGroupSummary tab is a pivot of all charges shown by Invoice Type and Category Groups by month.
+  - CategoryDetail tab is a pivot of all charges by Invoice Type, Category Group, Category and specific service Detail by month.
+  - HrlyVirtualServerPivot tab is a pivot of just Hourly Classic VSI's if they exist
+  - MnthlyVirtualServerPivot tab is a pivot of just monthly Classic VSI's if they exist
+  - HrlyBareMetalServerPivot tab is a pivot of Hourly Bare Metal Servers if they exist
+- MnthlyBareMetalServerPivot tab is a pivot table of monthly Bare Metal Server if they exist
+
+   ***example:*** to provide the 3 latest months of detail
+   ```bazaar
+   export IC_API_KEY=<ibm cloud apikey>
+   python invoiceAnalysis.py -m 3
+   ```
+
+### Type 2 (less common) Reconciliation Approach (specify --type2 on command line to generate this output)
+Excel Tabs Descriptions
+   - ***Detail*** is a table of every invoice item (Parent and children) for all the collected invoices represented as one row each.  All invoice types are included, including CREDIT invoices.  The detail tab can be sorted or filtered to find specific dates, billing item id's, or specific services.  
+   - ***InvoiceSummary*** is a table of all charges by product group and category for each month by invoice type. This tab can be used to understand changes in month-to-month usage.
+   - ***CategorySummary*** is a table  of all charges by product group, category, and description (for example specific VSI sizes or Bare metal server types) to dig deeper into month to month usage changes.
+   - ***IaaS_Invoice_Detail*** is a table of all line items expected to appear on the monthly Infrastructure as a Service invoice as a line item.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
+   - ***Classic_IaaS_combined*** is a table of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items. 
+   - ***Classic_COS_Detail*** is a table of detailed usage from Classic Cloud Object Storage.  Detail is provided for awareness, but will not appear on invoice.
+   - ***Platform_Invoice_Detail*** is a table of all the Platform as a Service charges appearing on the  "Platform as a Service" invoice.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
+
+
 1. First Look at the IaaS_Invoice_Detail.  These are the line items that should be broken out on the monthly Infrastructure as a Service Invoice.   Items with the same INV_PRODID will appear as one line item.  If correct you should be able to match all but two line items on invoice.
 2. Next look at the Classic_IaaS_combined tab, this is a breakdown of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items.  Detail is provided for awareness, but will not appear on invoice.
 3. Next look at the Classic_COS_Custom tab, this is a breakdown of the custom charges for Classic Object Storage.  On the monthly invoice  This total should match the remaining line item.  Detail is provided for awareness, but will not appear on invoice.
@@ -32,15 +68,11 @@ An Excel worksheet is created with multiple tabs from the collected data (Classi
    - Items with the same INV_PRODID will appear as one line item on the invoice.   For most services this correlates to one usage metric, but several services combine metrics under on INV_PRODID and these will need to be summed on the ***IaaS_Invoice_Detail*** tab manually to match the line item on the invoice.
    - If on the ***IaaS_Invoice_Detail*** tab you can't find a corresponding line item on the invoice (other than the items mentioned in step 1) it's likley that it was included with the ***Classic_IaaS_combined*** or vice-versa.
 
-### Excel Tabs Descriptions
-   - ***Detail*** is a table of every invoice item (Parent and children) for all the collected invoices represented as one row each.  All invoice types are included, including CREDIT invoices.  The detail tab can be sorted or filtered to find specific dates, billing item id's, or specific services.  
-   - ***InvoiceSummary*** is a table of all charges by product group and category for each month by invoice type. This tab can be used to understand changes in month-to-month usage.
-   - ***CategorySummary*** is a table  of all charges by product group, category, and description (for example specific VSI sizes or Bare metal server types) to dig deeper into month to month usage changes.
-   - ***IaaS_Invoice_Detail*** is a table of all line items expected to appear on the monthly Infrastructure as a Service invoice as a line item.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
-   - ***Classic_IaaS_combined*** is a table of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items. 
-   - ***Classic_COS_Custom*** is a table of the custom charges for Classic Object Storage.  Detail is provided for awareness, but will not appear on invoice.
-   - ***Platform_Invoice_Detail*** is a table of all the Platform as a Service charges appearing on the  "Platform as a Service" invoice.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
-
+   example to provide the 3 latest months of detail
+   ```bazaar
+   export IC_API_KEY=<ibm cloud apikey>
+   python invoiceAnalysis.py -m 3 --type2
+   ```
 
 ## Script Execution Instructions
 
