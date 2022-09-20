@@ -115,7 +115,10 @@ def parseChildren(row, parentDescription, children):
             row['RecordType'] = "Child"
             row["childBillingItemId"] = child["billingItemId"]
             row['childParentProduct'] = parentDescription
-            row["Category"] = child["product"]["itemCategory"]["name"]
+            if "itemCategory" in child["product"]:
+                row["Category"] = child["product"]["itemCategory"]["name"]
+            else:
+                row["Category"] = "Unknown"
             if "group" in child["category"]:
                 row["Category_Group"] = child["category"]["group"]["name"]
             else:
@@ -575,7 +578,7 @@ def createType1Report(filename, classicUsage):
 
             # Build Dataframe of metered OS VMware Licenses (from children records)
             vmwareOS = allcharges.query('RecordType == "Child" and Category == "Operating System"').loc[
-                allcharges["OS"].str.contains("VMware Server")]
+                allcharges["OS"].str.contains("VMware")]
             vmwareOS["Invoice_Line_Item_Description"] = "VMware Licensing"
 
             # Build Dataframe of all Classic Objet Storage line items
@@ -673,7 +676,6 @@ def createType1Report(filename, classicUsage):
     def createPaasTopSheet(classicUsage):
         """
         Build a pivot table of items that typically show on CFTS invoice at child level
-        TODO Create one top sheet per month selected similiar to original (don't show columns by month as it doesn't make sense)
         """
         paasCodes = ["D01J5ZX", "D01J6ZX", "D01J7ZX", "D01J8ZX", "D01J9ZX", "D01JAZX", "D01JBZX", "D01NGZX", "D01NHZX",
                      "D01NIZX", "D01NJZX", "D022FZX", "D1VCRLL", "D1VCSLL",
@@ -681,12 +683,11 @@ def createType1Report(filename, classicUsage):
                      "D1VD2LL", "D1VD3LL", "D1VD4LL", "D1VD5LL", "D1VD6LL",
                      "D1VD7LL", "D1VD8LL", "D1VD9LL", "D1VDALL", "D1YJMLL", "D20Y7LL"]
 
-        # D1VG4LL = VPC Block which is no it's own line item starting July 2022
         months = classicUsage.IBM_Invoice_Month.unique()
         for i in months:
             logging.info("Creating PaaS Invoice Top Sheet Tab for {}.".format(i))
             childRecords = classicUsage.query(
-                'IBM_Invoice_Month == @i and RecordType == ["Child"] and INV_PRODID != [""] and INV_PRODID not in @paasCodes')
+                'IBM_Invoice_Month == @i and RecordType == ["Child"] and INV_PRODID != [""] ')
 
             if len(childRecords) > 0:
                 childSummary = pd.pivot_table(childRecords,
@@ -964,7 +965,7 @@ def createType1Report(filename, classicUsage):
         """
         createCategoryGroup(classicUsage)
         createCategoryDetail(classicUsage)
-        createPaaSInvoiceDetail(classicUsage)
+        #createPaaSInvoiceDetail(classicUsage)
         createClassicCOS(classicUsage)
         createHourlyVirtualServers(classicUsage)
         createMonthlyVirtualServers(classicUsage)
