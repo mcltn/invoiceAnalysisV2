@@ -86,6 +86,8 @@ def getInvoiceList(startdate, enddate):
     dallas=tz.gettz('US/Central')
     logging.info("Looking up invoices from {} to {}.".format(startdate.strftime("%m/%d/%Y %H:%M:%S%z"), enddate.strftime("%m/%d/%Y %H:%M:%S%z")))
     # filter invoices based on local dallas time that correspond to CFTS UTC cutoff
+    logging.debug("invoiceList startDate: {}".format(startdate.astimezone(dallas).strftime("%m/%d/%Y %H:%M:%S")))
+    logging.debug("invoiceList endDate: {}".format(enddate.astimezone(dallas).strftime("%m/%d/%Y %H:%M:%S")))
     try:
         invoiceList = client['Account'].getInvoices(id=ims_account, mask='id,createDate,typeCode,invoiceTotalAmount,invoiceTotalRecurringAmount,invoiceTopLevelItemCount', filter={
                 'invoices': {
@@ -101,6 +103,7 @@ def getInvoiceList(startdate, enddate):
     except SoftLayer.SoftLayerAPIError as e:
         logging.error("Account::getInvoices: %s, %s" % (e.faultCode, e.faultString))
         quit()
+    logging.debug("getInvoiceList account {}: {}".format(ims_account,invoiceList))
     return invoiceList
 
 def parseChildren(row, parentDescription, children):
@@ -301,10 +304,22 @@ def getInvoiceDetail(startdate, enddate):
             logging.info("Retrieving %s invoice line items for Invoice %s at Offset %s of %s" % (limit, invoiceID, offset, totalItems))
 
             try:
-                Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
-                                    mask="id, billingItemId,categoryCode,category,category.group, hourlyFlag,hostName,domainName,location,notes,product.description,product.taxCategory,billingItem.resourceTableId," \
-                                         "createDate,totalRecurringAmount,totalOneTimeAmount,usageChargeFlag,hourlyRecurringFee,children.billingItemId,children.description,children.category.group," \
-                                         "children.categoryCode,children.product,children.product.taxCategory,children.product.attributes,children.product.attributes.attributeType,children.recurringFee")
+                """
+                       if --storage specified on command line provide
+                       additional mapping of current storage comments to billing
+                       records billingItem.resourceTableId is link to storage.
+                       note: user must have classic Infrastructure access for storage components
+                """
+                if storageFlag:
+                    Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
+                                        mask="id, billingItemId,categoryCode,category,category.group, hourlyFlag,hostName,domainName,location,notes,product.description,product.taxCategory,billingItem.resourceTableId," \
+                                             "createDate,totalRecurringAmount,totalOneTimeAmount,usageChargeFlag,hourlyRecurringFee,children.billingItemId,children.description,children.category.group," \
+                                             "children.categoryCode,children.product,children.product.taxCategory,children.product.attributes,children.product.attributes.attributeType,children.recurringFee")
+                else:
+                    Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
+                                        mask="id, billingItemId,categoryCode,category,category.group, hourlyFlag,hostName,domainName,location,notes,product.description,product.taxCategory," \
+                                             "createDate,totalRecurringAmount,totalOneTimeAmount,usageChargeFlag,hourlyRecurringFee,children.billingItemId,children.description,children.category.group," \
+                                             "children.categoryCode,children.product,children.product.taxCategory,children.product.attributes,children.product.attributes.attributeType,children.recurringFee")
             except SoftLayer.SoftLayerAPIError as e:
                 logging.error("Billing_Invoice::getInvoiceTopLevelItems: %s, %s" % (e.faultCode, e.faultString))
                 quit()
