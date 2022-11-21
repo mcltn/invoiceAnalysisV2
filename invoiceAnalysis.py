@@ -297,7 +297,7 @@ def getInvoiceDetail(startdate, enddate):
         # PRINT INVOICE SUMMARY LINE
         logging.info('Invoice: {} Date: {} Type:{} Items: {} Amount: ${:,.2f}'.format(invoiceID, datetime.strftime(invoiceDate, "%Y-%m-%d"), invoiceType, totalItems, invoiceTotalRecurringAmount))
 
-        limit = 100 ## set limit of record returned
+        limit = 75 ## set limit of record returned
         for offset in range(0, totalItems, limit):
             if ( totalItems - offset - limit ) < 0:
                 remaining = totalItems - offset
