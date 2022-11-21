@@ -8,6 +8,8 @@ Script | Description
 ------ | -----------
 invoiceAnalysis.py | Export usage detail by SLIC invoice month to an Excel file for all IBM Cloud Classic invoices.
 estimateCloudUSage.py | Estimate current monbth usage for Platform as a Service from start of month to current date & time
+classicConfigAnalysis.py | Analyze the Classic Bare Metal Servers within an account; outputing an Excel worksheet with various inventory details.
+classicConfigReport.py | Creates a detailed report of Classic Bare Metal Servers within an account outputing a plain text inventory report.
 requirements.txt | Package requirements
 logging.json | LOGGER config used by script
 
