@@ -1,0 +1,432 @@
+##
+## Account Bare Metal Configuration Report
+## Place APIKEY & Username in config.ini
+## or pass via commandline  (example: ConfigurationReport.py -u=userid -k=apikey)
+##
+
+import SoftLayer, json, os, argparse, logging, logging.config
+
+def setup_logging(default_path='logging.json', default_level=logging.info, env_key='LOG_CFG'):
+    # read logging.json for log parameters to be ued by script
+    path = default_path
+    value = os.getenv(env_key, None)
+    if value:
+        path = value
+    if os.path.exists(path):
+        with open(path, 'rt') as f:
+            config = json.load(f)
+        logging.config.dictConfig(config)
+    else:
+        logging.basicConfig(level=default_level)
+def createEmployeeClient(end_point_employee, employee_user, passw, token):
+    """Creates a softlayer-python client that can make API requests for a given employee_user"""
+    client_noauth = SoftLayer.Client(endpoint_url=end_point_employee)
+    client_noauth.auth = None
+    employee = client_noauth['SoftLayer_User_Employee']
+    result = employee.performExternalAuthentication(employee_user, passw, token)
+    # Save result['hash'] somewhere to not have to login for every API request
+    client_employee = SoftLayer.employee_client(username=employee_user, access_token=result['hash'], endpoint_url=end_point_employee)
+    return client_employee
+class TablePrinter(object):
+    #
+    # FORMAT TABLE
+    #
+    "Print a list of dicts as a table"
+
+    def __init__(self, fmt, sep=' ', ul=None):
+        """        
+        @param fmt: list of tuple(heading, key, width)
+                        heading: str, column label
+                        key: dictionary key to value to print
+                        width: int, column width in chars
+        @param sep: string, separation between columns
+        @param ul: string, character to underline column label, or None for no underlining
+        """
+        super(TablePrinter, self).__init__()
+        self.fmt = str(sep).join('{lb}{0}:{1}{rb}'.format(key, width, lb='{', rb='}') for heading, key, width in fmt)
+        self.head = {key: heading for heading, key, width in fmt}
+        self.ul = {key: str(ul) * width for heading, key, width in fmt} if ul else None
+        self.width = {key: width for heading, key, width in fmt}
+
+    def row(self, data):
+        return self.fmt.format(**{k: str(data.get(k, ''))[:w] for k, w in self.width.items()})
+
+    def __call__(self, dataList):
+        _r = self.row
+        res = [_r(data) for data in dataList]
+        res.insert(0, _r(self.head))
+        if self.ul:
+            res.insert(1, _r(self.ul))
+        return '\n'.join(res)
+
+
+if __name__ == "__main__":
+    ## READ CommandLine Arguments and load configuration file
+    parser = argparse.ArgumentParser(description="Configuration Report prints details of BareMetal Servers such as Network, VLAN, and hardware configuration")
+    parser.add_argument("-u", "--username", default=os.environ.get('ims_username', None), metavar="username",
+                        help="IMS Userid")
+    parser.add_argument("-p", "--password", default=os.environ.get('ims_password', None), metavar="password",
+                        help="IMS Password")
+    parser.add_argument("-a", "--account", default=os.environ.get('ims_account', None), metavar="account",
+                        help="IMS Account")
+    parser.add_argument("-k", "--IC_API_KEY", default=os.environ.get('IC_API_KEY', None), metavar="apikey",
+                        help="IBM Cloud API Key")
+    parser.add_argument("-c", "--config", help="config.ini file to load")
+
+    args = parser.parse_args()
+
+    if args.IC_API_KEY == None:
+        if args.username == None or args.password == None or args.account == None:
+            logging.error("You must provide either IBM Cloud ApiKey or Internal Employee credentials & IMS account.")
+            quit()
+        else:
+            if args.username != None or args.password != None or args.account != None:
+                logging.info("Using Internal endpoint and employee credentials.")
+                ims_username = args.username
+                ims_password = args.password
+                ims_yubikey = input("Yubi Key:")
+                ims_account = args.account
+                SL_ENDPOINT = "http://internal.applb.dal10.softlayer.local/v3.1/internal/xmlrpc"
+                client = createEmployeeClient(SL_ENDPOINT, ims_username, ims_password, ims_yubikey)
+            else:
+                logging.error("Error!  Can't find internal credentials or ims account.")
+                quit()
+    else:
+        logging.info("Using IBM Cloud Account API Key.")
+        IC_API_KEY = args.IC_API_KEY
+        ims_account = None
+
+        # Change endpoint to private Endpoint if command line open chosen
+        if args.SL_PRIVATE:
+            SL_ENDPOINT = "https://api.service.softlayer.com/xmlrpc/v3.1"
+        else:
+            SL_ENDPOINT = "https://api.softlayer.com/xmlrpc/v3.1"
+
+        # Create Classic infra API client
+        client = SoftLayer.Client(username="apikey", api_key=IC_API_KEY, endpoint_url=SL_ENDPOINT)
+
+    setup_logging()
+    # BUILD TABLES
+    #
+    networkFormat = [
+        ('Interface', 'interface', 10),
+        ('MAC ', 'mac', 17),
+        ('IpAddress', 'primaryIpAddress', 16),
+        ('speed', 'speed', 5),
+        ('status', 'status', 10),
+        ('Vlan', 'vlan', 5),
+        ('Vlan Name', 'vlanName', 20),
+        ('Switch', 'switch', 17),
+        ('Router', 'router', 17),
+        ('Manufacturer', 'router_mfg', 12),
+        ('RouterIP', 'router_ip', 16)
+    ]
+
+    serverFormat = [
+        ('Type   ', 'devicetype', 15),
+        ('Manufacturer', 'manufacturer', 15),
+        ('Name', 'name', 20),
+        ('Description', 'description', 30),
+        ('Modify Date', 'modifydate', 25),
+        ('Serial Number', 'serialnumber', 15)
+    ]
+
+    trunkFormat = [
+        ('Interface', 'interface', 10),
+        ('Vlan #', 'vlanNumber', 8),
+        ('VlanName', 'vlanName', 20)
+    ]
+
+    storageFormat = [
+        ('StorageType', 'type', 11),
+        ('Address', 'address', 40),
+        ('Gb', 'capacity', 10),
+        ('IOPS', 'iops', 10),
+        ('Notes', 'notes', 50)
+    ]
+
+    """
+    GET DETAILS OF ALL HARDWARE DEVICES IN ACCOUNT
+    USE SMALL LIMIT DUE TO SIZE OF DATA RETURNED
+    """
+    limit = 10
+    offset = 0
+    while True:
+        hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenterName,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
+                'backendNetworkComponents.router,backendNetworkComponents.router.primaryIpAddress,backendNetworkComponents.networkVlanTrunks.networkVlan,backendNetworkComponents.uplinkComponent,frontendNetworkComponentCount,frontendNetworkComponents,frontendNetworkComponents.router,'
+                'frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents,activeComponents,networkGatewayMemberFlag,softwareComponents')
+
+        logging.info("Requesting Hardware for account {}, limit={} @ offset {}, returned={}".format(ims_account, limit, offset, len(hardwarelist)))
+        if len(hardwarelist) == 0:
+            break
+        else:
+            offset = offset + len(hardwarelist)
+        """
+        Extract hardware data from json
+        """
+        for hardware in hardwarelist:
+            hardwareid = hardware['id']
+
+            # FIND Index for MGMT Interface and get it's ComponentID Number
+            mgmtnetworkcomponent = []
+            for backend in hardware['backendNetworkComponents']:
+                if backend['name'] == "mgmt":
+                    mgmtnetworkcomponent = backend
+                    continue
+
+            # OBTAIN INFORMATION ABOUT PRIVATE (BACKEND) INTERFACES
+            backendnetworkcomponents = []
+            for backend in hardware['backendNetworkComponents']:
+                if backend['name'] == "eth":
+                    backendnetworkcomponent = backend
+                    # Get trunked vlans because relational item doesn't return correctly
+                    backendnetworkcomponent['networkVlanTrunks'] = client['Network_Component'].getNetworkVlanTrunks(mask='networkVlan', id=backendnetworkcomponent['uplinkComponent']['id'])
+                    backendnetworkcomponents.append(backendnetworkcomponent)
+
+            # FIND INFORMATION ABOUT PUBLIC (FRONTEND) INTERFACES
+            frontendnetworkcomponents = []
+            for frontend in hardware['frontendNetworkComponents']:
+                if frontend['name'] == "eth":
+                    #frontendnetworkcomponent = client['Network_Component'].getObject(mask="router, uplinkComponent", id=frontend['id'])
+                    frontendnetworkcomponent = frontend
+                    # Get trunked vlans
+                    #frontendnetworkcomponent['trunkedvlans'] = client['Network_Component'].getNetworkVlanTrunks(
+                    #    mask='networkVlan', id=frontendnetworkcomponent['uplinkComponent']['id'])
+                    frontendnetworkcomponents.append(frontendnetworkcomponent)
+
+            if "softwareComponents" in hardware:
+                if len(hardware["softwareComponents"])>0:
+                    os = hardware["softwareComponents"][0]["softwareLicense"]["softwareDescription"]["name"]
+                else:
+                    os = ""
+            else:
+                os = ""
+
+            print(
+                "__________________________________________________________________________________________________________________")
+            print()
+            print("Id              : %s" % (hardware['id']))
+            print("Hostname        : %s" % (hardware['fullyQualifiedDomainName']))
+            print("Operating System: %s" % os)
+            print("Gateway Member  : %s" % (hardware['networkGatewayMemberFlag']))
+            print("Datacenter      : %s" % (hardware['datacenterName']))
+            print("Serial #        : %s" % (hardware['manufacturerSerialNumber']))
+            print("Provision Date  : %s" % (hardware['provisionDate']))
+            print("Notes           : %s" % (hardware['notes']))
+            print ()
+            #
+            # POPULATE TABLE WITH COMPONENT DATA
+            #
+
+            #result = client['Hardware'].getComponents(id=hardwareid)
+            data = []
+            for device in hardware["activeComponents"]:
+                hwdevice = {}
+                hwdevice['devicetype'] = \
+                    device['hardwareComponentModel']['hardwareGenericComponentModel']['hardwareComponentType']['type']
+                hwdevice['manufacturer'] = device['hardwareComponentModel']['manufacturer']
+                hwdevice['name'] = device['hardwareComponentModel']['name']
+                hwdevice['description'] = device['hardwareComponentModel']['hardwareGenericComponentModel'][
+                    'description']
+                hwdevice['modifydate'] = device['modifyDate']
+                if 'serialNumber' in device.keys(): hwdevice['serialnumber'] = device['serialNumber']
+                data.append(hwdevice)
+            print(TablePrinter(serverFormat, ul='=')(data))
+
+            print(
+                "__________________________________________________________________________________________________________________")
+
+            #
+            # POPULATE TABLE WITH FRONTEND DATA
+            #
+
+            print()
+            print("FRONTEND NETWORK")
+            data = []
+            network = {}
+            for frontendnetworkcomponent in frontendnetworkcomponents:
+                network = {}
+                network['interface'] = "{}{}".format(frontendnetworkcomponent['name'], frontendnetworkcomponent['port'])
+                network['mac'] = frontendnetworkcomponent['macAddress']
+                if 'primaryIpAddress' in frontendnetworkcomponent:
+                    network['primaryIpAddress'] = frontendnetworkcomponent['primaryIpAddress']
+                network['speed'] = frontendnetworkcomponent['speed']
+                network['status'] = frontendnetworkcomponent['status']
+                if 'hardware' in frontendnetworkcomponent['uplinkComponent']:
+                   network['switch'] = frontendnetworkcomponent['uplinkComponent']['hardware']['hostname']
+                else:
+                   network['switch'] = ""
+
+                network['router'] = frontendnetworkcomponent['router']['hostname']
+                if 'hardwareChassis' in frontendnetworkcomponent['router']:
+                    network['router_mfg'] = frontendnetworkcomponent['router']['hardwareChassis']['manufacturer']
+                else:
+                    network['router_mfg'] = ""
+                if 'primaryIpAddress' in frontendnetworkcomponent['router']:
+                    network['router_ip'] = frontendnetworkcomponent['router']['primaryIpAddress']
+                else:
+                    network['router_ip'] = ""
+                if len(hardware['networkVlans']) > 1:
+                    network['vlan'] = hardware['networkVlans'][1]['vlanNumber']
+                    if 'name' in hardware['networkVlans'][1].keys():
+                        if 'name' in hardware['networkVlans'][0]:
+                            network['vlanName'] = hardware['networkVlans'][0]['name']
+                        else:
+                            network['vlanName'] = ""
+
+                data.append(network)
+            print(TablePrinter(networkFormat, ul='=')(data))
+
+            #
+            # POPULATE TABLE WITH BACKEND DATA
+            #
+
+            # print (json.dumps(backendnetworkcomponents,indent=4))
+            interfacedata = []
+            trunkdata = []
+            for backendnetworkcomponent in backendnetworkcomponents:
+                network = {}
+                network['interface'] = "{}{}".format(backendnetworkcomponent['name'], backendnetworkcomponent['port'])
+                network['mac'] = backendnetworkcomponent['macAddress']
+                if 'primaryIpAddress' in backendnetworkcomponent:
+                    network['primaryIpAddress'] = backendnetworkcomponent['primaryIpAddress']
+                network['speed'] = backendnetworkcomponent['speed']
+                network['status'] = backendnetworkcomponent['status']
+                network['vlan'] = hardware['networkVlans'][0]['vlanNumber']
+
+                if 'name' in hardware['networkVlans'][0].keys(): network['vlanName'] = hardware['networkVlans'][0][
+                    'name']
+
+                if 'hardware' in backendnetworkcomponent['uplinkComponent']:
+                    network['switch'] = backendnetworkcomponent['uplinkComponent']['hardware']['hostname']
+                else:
+                    network['switch'] = ""
+                network['router'] = backendnetworkcomponent['router']['hostname']
+                if 'hardwareChassis' in backendnetworkcomponent['router']:
+                    network['router_mfg'] = backendnetworkcomponent['router']['hardwareChassis']['manufacturer']
+                else:
+                    network['router_mfg'] = ""
+                if 'primaryIpAddress' in backendnetworkcomponent['router']:
+                    network['router_ip'] = backendnetworkcomponent['router']['primaryIpAddress']
+                else:
+                    network['router_ip'] = ""
+                interfacedata.append(network)
+                #for trunk in backendnetworkcomponent['trunkedvlans']:
+                for trunk in backendnetworkcomponent['networkVlanTrunks']:
+                    trunkedvlan = {}
+                    trunkedvlan['interface'] = network['interface']
+                    trunkedvlan['vlanNumber'] = trunk['networkVlan']['vlanNumber']
+                    if 'name' in trunk['networkVlan'].keys(): trunkedvlan['vlanName'] = trunk['networkVlan']['name']
+                    trunkdata.append(trunkedvlan)
+
+            print()
+            print("BACKEND NETWORK INTERFACE(S)")
+            print(TablePrinter(networkFormat, ul='=')(interfacedata))
+            print()
+            print("TAGGED VLANS BY INTERFACE")
+            print(TablePrinter(trunkFormat, ul='=')(trunkdata))
+
+            """
+            GET MANAGEMENT NETWORK DETAILS FOR HARDWARE
+            """""
+            print()
+            print("MGMT NETWORK")
+            data = []
+            network = {}
+
+            if 'name' in mgmtnetworkcomponent:
+                network['interface'] = "{}{}".format(mgmtnetworkcomponent['name'], mgmtnetworkcomponent['port'])
+            else:
+                network['interface'] = ""
+
+            if 'ipmiMacAddress' in mgmtnetworkcomponent:
+                network['mac'] = mgmtnetworkcomponent['ipmiMacAddress']
+            else:
+                network['mac'] = ""
+
+            if 'ipmiIpAddress' in mgmtnetworkcomponent:
+                network['primaryIpAddress'] = mgmtnetworkcomponent['ipmiIpAddress']
+            else:
+                network['primaryIpAddress'] = ""
+
+            if 'speed' in mgmtnetworkcomponent:
+                network['speed'] = mgmtnetworkcomponent['speed']
+            else:
+                network['speed'] = ""
+            if 'status' in mgmtnetworkcomponent:
+                network['status'] = mgmtnetworkcomponent['status']
+            else:
+                network['status'] = ""
+
+            if len(hardware['networkVlans']) > 0:
+                network['vlan'] = hardware['networkVlans'][0]['vlanNumber']
+            else:
+                network['vlan'] = ""
+
+            if len(hardware['networkVlans']) > 0:
+                if 'name' in hardware['networkVlans'][0].keys():
+                    network['vlanName'] = hardware['networkVlans'][0]['name']
+                else:
+                    network['vlanName'] = ""
+            else:
+                network['vlanName'] = ""
+
+            if 'uplinkComponent' in mgmtnetworkcomponent:
+                if 'hardware' in mgmtnetworkcomponent['uplinkComponent']:
+                    network['switch'] = mgmtnetworkcomponent['uplinkComponent']['hardware']['hostname']
+                else:
+                    network['switch'] = ""
+            else:
+                network['switch'] = ""
+
+            if 'router' in mgmtnetworkcomponent:
+                if 'hostname' in mgmtnetworkcomponent['router']:
+                    network['router'] = mgmtnetworkcomponent['router']['hostname']
+                else:
+                    network['router'] = ""
+
+                if 'hardwareChassis' in mgmtnetworkcomponent['router']:
+                    network['router_mfg'] = mgmtnetworkcomponent['router']['hardwareChassis']['manufacturer']
+                else:
+                    network['router_mfg'] = ""
+                if 'primaryIpAddress' in mgmtnetworkcomponent['router']:
+                    network['router_ip'] = mgmtnetworkcomponent['router']['primaryIpAddress']
+                else:
+                    network['router_ip'] = ""
+            else:
+                network['router'] = ""
+                network['router_mfg'] = ""
+                network['router_ip'] = ""
+
+            data.append(network)
+
+            print(TablePrinter(networkFormat, ul='=')(data))
+            print()
+
+            #
+            # GET NETWORK STORAGE
+            #
+
+            storagealloc = client['Hardware'].getAllowedNetworkStorage(mask="iops", id=hardwareid)
+            if len(storagealloc) > 0:
+                data = []
+                for storage in storagealloc:
+                    storagerow = {}
+                    storagerow['type'] = storage['nasType']
+                    if 'serviceResourceBackendIpAddress' in storage.keys():
+                        storagerow['address'] = storage['serviceResourceBackendIpAddress']
+                        storagerow['capacity'] = storage['capacityGb']
+                        if 'iops' in storage:
+                            storagerow['iops'] = storage['iops']
+                        else:
+                            storagerow['iops'] = ""
+                    if 'notes' in storage.keys(): storagerow['notes'] = storage['notes']
+                    data.append(storagerow)
+                print("")
+                print("NETWORK STORAGE ASSOCIATED WITH HARDWARE")
+                print(TablePrinter(storageFormat, ul='=')(data))
+                print("")
+
+            print()
+
+
