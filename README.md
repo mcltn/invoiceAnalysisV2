@@ -94,7 +94,7 @@ $ pip install -r requirements.txt
 ````
 2. For Internal IMS user/password/yubikey access you must manually uninstall the SoftLayer SDK and manually build the internal SDK for the script
 to function properly.  Additionally, you must be connected via Global Protect VPN while running reports and will be prompted for your 2FA yubikey.
-each time you run the script.  [Instructions](https://github.ibm.com/SoftLayer/internal-softlayer-cli)
+each time you run the script.  [Internal SDK & Instructions](https://github.ibm.com/SoftLayer/internal-softlayer-cli)
 ```azure
 $ pip uninstall SoftLayer
 $ git clone https://github.ibm.com/SoftLayer/internal-softlayer-cli
