@@ -97,16 +97,20 @@ def getinventory():
             if "softwareComponents" in hardware:
                 if len(hardware["softwareComponents"]) > 0:
                     os = hardware["softwareComponents"][0]["softwareLicense"]["softwareDescription"]["name"]
+                    osversion = hardware["softwareComponents"][0]["softwareLicense"]["softwareDescription"]["version"]
                 else:
                     os = ""
+                    osversion = ""
             else:
                 os = ""
+                osversion = ""
 
             output = {
                 "id": hardware['id'],
                 "fullyQualifiedDomainName": hardware['fullyQualifiedDomainName'],
                 "networkGatewayMemberFlag": hardware['networkGatewayMemberFlag'],
                 "operatingSystem": os,
+                "version": osversion,
                 "datacenterName": hardware['datacenterName'],
                 "manufacturerSerialNumber": hardware['manufacturerSerialNumber'],
                 "provisionDate": hardware['provisionDate'],
@@ -200,6 +204,9 @@ def getinventory():
                         "vlanNumber": "{}.{}".format(output[interface+"_router"], vlanNumber),
                         "vlanName": vlanName,
                         "fullyQualifiedDomainName": output["fullyQualifiedDomainName"],
+                        "networkGatewayMemberFlag": output["networkGatewayMemberFlag"],
+                        "operatingSystem": output["operatingSystem"],
+                        "version": output["version"],
                         "interface": interface
                     }
                     trunkedvlan_data.append(row)
@@ -248,7 +255,10 @@ def getinventory():
 
     hw_columns = [
         "id",
+        "networkGatewayMemberFlag",
         "fullyQualifiedDomainName",
+        "operatingSystem",
+        "version",
         "datacenterName",
         "manufacturerSerialNumber",
         "provisionDate",
@@ -350,7 +360,7 @@ def getinventory():
         "mgmt0_router",
         "mgmt0_router_ip",
     ]
-    hardware_df = pd.DataFrame(data)
+    hardware_df = pd.DataFrame(data,columns=hw_columns)
     trunkedvlan_df = pd.DataFrame(trunkedvlan_data)
 
     return hardware_df, trunkedvlan_df
@@ -392,7 +402,7 @@ def createVlanPivot(trunkedvlan_df):
     """
 
     logging.info("Creating VLAN pivot table.")
-    vlanpivot = pd.pivot_table(trunkedvlan_df, index=["datacenterName", "vlanNumber", "vlanName", "fullyQualifiedDomainName"],
+    vlanpivot = pd.pivot_table(trunkedvlan_df, index=["datacenterName", "vlanNumber", "vlanName",  "fullyQualifiedDomainName", "networkGatewayMemberFlag", "operatingSystem", "version"],
                                values=["interface"],
                                aggfunc={"interface": "nunique"}, margins=True, margins_name="Count", fill_value=0)
     vlanpivot.to_excel(writer, 'trunkedVlanPivot')
@@ -410,7 +420,7 @@ def createServersbyOsPivot(hardware_df):
     Create a list of server for each OS
     """
     logging.info("Creating Servers by OS table.")
-    vlanpivot = pd.pivot_table(hardware_df, index=["datacenterName", "networkGatewayMemberFlag", "fullyQualifiedDomainName", "operatingSystem"],
+    vlanpivot = pd.pivot_table(hardware_df, index=["operatingSystem", "version", "fullyQualifiedDomainName"],
                                values=["id"],
                                aggfunc={"id": "nunique"}, margins=True, margins_name="Count", fill_value=0)
     vlanpivot.to_excel(writer, 'ServerByOSPivot')
