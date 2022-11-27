@@ -52,8 +52,8 @@ def getinventory():
 
     while True:
         hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenterName,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
-                'backendNetworkComponents.router,backendNetworkComponents.router.primaryIpAddress,backendNetworkComponents.networkVlanTrunks.networkVlan,backendNetworkComponents.uplinkComponent,frontendNetworkComponentCount,frontendNetworkComponents,frontendNetworkComponents.router,'
-                'frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents, networkGatewayMemberFlag,softwareComponents')
+                'backendNetworkComponents.router,backendNetworkComponents.router.primaryIpAddress,backendNetworkComponents.uplinkComponent,frontendNetworkComponentCount,frontendNetworkComponents,frontendNetworkComponents.router,'
+                'frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents,networkGatewayMemberFlag,softwareComponents,frontendNetworkComponents.duplexMode,backendNetworkComponents.duplexMode')
 
         logging.info("Requesting Hardware for account {}, limit={} @ offset {}, returned={}".format(ims_account, limit, offset, len(hardwarelist)))
         if len(hardwarelist) == 0:
@@ -86,11 +86,7 @@ def getinventory():
             frontendnetworkcomponents = []
             for frontend in hardware['frontendNetworkComponents']:
                 if frontend['name'] == "eth":
-                    #frontendnetworkcomponent = client['Network_Component'].getObject(mask="router, uplinkComponent", id=frontend['id'])
                     frontendnetworkcomponent = frontend
-                    # Get trunked vlans
-                    #frontendnetworkcomponent['trunkedvlans'] = client['Network_Component'].getNetworkVlanTrunks(
-                    #    mask='networkVlan', id=frontendnetworkcomponent['uplinkComponent']['id'])
                     frontendnetworkcomponents.append(frontendnetworkcomponent)
 
             # Get operating system from software components
@@ -116,21 +112,7 @@ def getinventory():
                 "provisionDate": hardware['provisionDate'],
                 "notes": hardware['notes']
                 }
-            """
-            data = []
-            for device in hardware["activeComponents"]:
-                hwdevice = {}
-                hwdevice['devicetype'] = \
-                    device['hardwareComponentModel']['hardwareGenericComponentModel']['hardwareComponentType']['type']
-                hwdevice['manufacturer'] = device['hardwareComponentModel']['manufacturer']
-                hwdevice['name'] = device['hardwareComponentModel']['name']
-                hwdevice['description'] = device['hardwareComponentModel']['hardwareGenericComponentModel'][
-                    'description']
-                hwdevice['modifydate'] = device['modifyDate']
-                if 'serialNumber' in device.keys(): hwdevice['serialnumber'] = device['serialNumber']
-                data.append(hwdevice)
-            print(TablePrinter(serverFormat, ul='=')(data))
-            """
+
 
             #
             # POPULATE TABLE WITH FRONTEND DATA
@@ -150,11 +132,25 @@ def getinventory():
                 network[interface+"_router"] = frontendnetworkcomponent['router']['hostname']
                 if 'primaryIpAddress' in frontendnetworkcomponent['router']:
                     network[interface+'_router_ip'] = frontendnetworkcomponent['router']['primaryIpAddress']
-                if len(hardware['networkVlans']) > 1:
-                    network[interface+"_vlan"] = hardware['networkVlans'][1]['vlanNumber']
-                    if 'name' in hardware['networkVlans'][1].keys():
-                        if 'name' in hardware['networkVlans'][0]:
-                            network[interface+"_vlanName"] = hardware['networkVlans'][0]['name']
+
+                if 'duplexMode' in frontendnetworkcomponent:
+                    network[interface+'_duplexMode'] = frontendnetworkcomponent['duplexMode']['keyname']
+
+                if 'networkVlanId' in frontendnetworkcomponent['uplinkComponent']:
+                    networkVlanId = frontendnetworkcomponent['uplinkComponent']['networkVlanId']
+                else:
+                    networkVlanId = 0
+                    logging.error("No networkVlanId for frontendnetworkcomponentt:{}".format(frontendnetworkcomponent))
+
+                if len(hardware['networkVlans']) > 0:
+                    for networkvlan in hardware['networkVlans']:
+                        if networkVlanId == networkvlan['id']:
+                            if 'fullyQualifiedName' in networkvlan: network[interface+'_vlan'] = networkvlan['fullyQualifiedName']
+                            if 'name' in networkvlan: network[interface+'_vlanName'] = networkvlan['name']
+                            if 'vrfDefinitionId' in networkvlan: network[interface+'_vrfId'] = networkvlan['vrfDefinitionId']
+                else:
+                    logging.error("No vlans hwardware:{}".format(hardware))
+
                 output.update(network)
 
             """
@@ -171,9 +167,24 @@ def getinventory():
                     network[interface+'_primaryIpAddress'] = backendnetworkcomponent['primaryIpAddress']
                 network[interface+'_speed'] = backendnetworkcomponent['speed']
                 network[interface+'_status'] = backendnetworkcomponent['status']
-                network[interface+'_vlan'] = hardware['networkVlans'][0]['vlanNumber']
+                if 'duplexMode' in backendnetworkcomponent:
+                    network[interface+'_duplexMode'] = backendnetworkcomponent['duplexMode']['keyname']
 
-                if 'name' in hardware['networkVlans'][0].keys(): network[interface+'_vlanName'] = hardware['networkVlans'][0]['name']
+                if 'networkVlanId' in backendnetworkcomponent['uplinkComponent']:
+                    networkVlanId = backendnetworkcomponent['uplinkComponent']['networkVlanId']
+                else:
+                    networkVlanId = 0
+                    logging.error("No networkVlanId for backendnetworkcomponentt:{}".format(backendnetworkcomponent))
+
+                if len(hardware['networkVlans']) > 0:
+
+                    for networkvlan in hardware['networkVlans']:
+                        if networkVlanId == networkvlan['id']:
+                            if 'fullyQualifiedName' in networkvlan: network[interface+'_vlan'] = networkvlan['fullyQualifiedName']
+                            if 'name' in networkvlan: network[interface+'_vlanName'] = networkvlan['name']
+                            if 'vrfDefinitionId' in networkvlan: network[interface+'_vrfId'] = networkvlan['vrfDefinitionId']
+                else:
+                    logging.error("No vlans hwardware:{}".format(hardware))
 
                 network[interface+'_router'] = backendnetworkcomponent['router']['hostname']
 
@@ -187,6 +198,7 @@ def getinventory():
                 networkvlanTrunks = ""
                 for trunk in backendnetworkcomponent['networkVlanTrunks']:
                     vlanNumber = trunk['networkVlan']['vlanNumber']
+                    vlan_fqdn = trunk['networkVlan']['fullyQualifiedName']
                     if 'name' in trunk['networkVlan'].keys():
                         vlanName = trunk['networkVlan']['name']
                     else:
@@ -201,7 +213,7 @@ def getinventory():
                     """
                     row = {
                         "datacenterName": output["datacenterName"],
-                        "vlanNumber": "{}.{}".format(output[interface+"_router"], vlanNumber),
+                        "vlanNumber": vlan_fqdn,
                         "vlanName": vlanName,
                         "fullyQualifiedDomainName": output["fullyQualifiedDomainName"],
                         "networkGatewayMemberFlag": output["networkGatewayMemberFlag"],
@@ -220,33 +232,46 @@ def getinventory():
             if 'name' in mgmtnetworkcomponent:
                 interface= "{}{}".format(mgmtnetworkcomponent['name'], mgmtnetworkcomponent['port'])
 
-            if 'ipmiMacAddress' in mgmtnetworkcomponent:
-                network[interface+'_mac'] = mgmtnetworkcomponent['ipmiMacAddress']
+                if 'ipmiMacAddress' in mgmtnetworkcomponent:
+                    network[interface+'_mac'] = mgmtnetworkcomponent['ipmiMacAddress']
 
-            if 'ipmiIpAddress' in mgmtnetworkcomponent:
-                network[interface+'_primaryIpAddress'] = mgmtnetworkcomponent['ipmiIpAddress']
+                if 'ipmiIpAddress' in mgmtnetworkcomponent:
+                    network[interface+'_primaryIpAddress'] = mgmtnetworkcomponent['ipmiIpAddress']
 
-            if 'speed' in mgmtnetworkcomponent:
-                network[interface+'_speed'] = mgmtnetworkcomponent['speed']
+                if 'speed' in mgmtnetworkcomponent:
+                    network[interface+'_speed'] = mgmtnetworkcomponent['speed']
 
-            if 'status' in mgmtnetworkcomponent:
-                network[interface+'_status'] = mgmtnetworkcomponent['status']
+                if 'status' in mgmtnetworkcomponent:
+                    network[interface+'_status'] = mgmtnetworkcomponent['status']
 
-            if len(hardware['networkVlans']) > 0:
-                network[interface+'_vlan'] = hardware['networkVlans'][0]['vlanNumber']
+                if 'duplexMode' in mgmtnetworkcomponent:
+                    network[interface + '_duplexMode'] = mgmtnetworkcomponent['duplexMode']['keyname']
 
-            if len(hardware['networkVlans']) > 0:
-                if 'name' in hardware['networkVlans'][0].keys():
-                    network[interface+'_vlanName'] = hardware['networkVlans'][0]['name']
+                if 'networkVlanId' in mgmtnetworkcomponent['uplinkComponent']:
+                    networkVlanId = mgmtnetworkcomponent['uplinkComponent']['networkVlanId']
+                else:
+                    networkVlanId = ""
+                    logging.error("No networkVlanId for mgmtnetworkcomponentt:{}".format(mgmtnetworkcomponent))
 
-            if 'router' in mgmtnetworkcomponent:
-                if 'hostname' in mgmtnetworkcomponent['router']:
-                    network[interface+'_router'] = mgmtnetworkcomponent['router']['hostname']
+                if len(hardware['networkVlans']) > 0:
+                    for networkvlan in hardware['networkVlans']:
+                        if networkVlanId == networkvlan['id']:
+                            if 'fullyQualifiedName' in networkvlan: network[interface + '_vlan'] = networkvlan['fullyQualifiedName']
+                            if 'name' in networkvlan: network[interface + '_vlanName'] = networkvlan['name']
+                            if 'vrfDefinitionId' in networkvlan: network[interface + '_vrfId'] = networkvlan['vrfDefinitionId']
+                else:
+                    logging.error("No vlans hwardware:{}".format(hardware))
 
-                if 'primaryIpAddress' in mgmtnetworkcomponent['router']:
-                    network[interface+'_router_ip'] = mgmtnetworkcomponent['router']['primaryIpAddress']
+                if 'router' in mgmtnetworkcomponent:
+                    if 'hostname' in mgmtnetworkcomponent['router']:
+                        network[interface+'_router'] = mgmtnetworkcomponent['router']['hostname']
 
-            output.update(network)
+                    if 'primaryIpAddress' in mgmtnetworkcomponent['router']:
+                        network[interface+'_router_ip'] = mgmtnetworkcomponent['router']['primaryIpAddress']
+
+                output.update(network)
+            else:
+                logging.error("No Mgmt Network for hardware: {}".format(hardware))
 
             """
             Write hardware details to table
@@ -266,11 +291,13 @@ def getinventory():
         "eth1_mac",
         "eth1_primaryIpAddress",
         "eth1_speed",
+        "eth1_duplexMode",
         "eth1_status",
         "eth1_router",
         "eth1_router_ip",
         "eth1_vlan",
         "eth1_vlanName",
+        "eth1_vrfId",
         "eth3_mac",
         "eth3_speed",
         "eth3_status",
@@ -281,79 +308,98 @@ def getinventory():
         "eth0_mac",
         "eth0_primaryIpAddress",
         "eth0_speed",
+        "eth0_duplexMode",
         "eth0_status",
         "eth0_vlan",
         "eth0_vlanName",
+        "eth0_vrfId",
         "eth0_router",
         "eth0_router_ip",
         "eth0_networkvlanTrunks",
         "eth2_mac",
         "eth2_speed",
+        "eth2_duplexMode",
         "eth2_status",
         "eth2_vlan",
         "eth2_vlanName",
+        "eth1_vrfId",
         "eth2_router",
         "eth2_router_ip",
         "eth2_networkvlanTrunks",
         "eth4_mac",
         "eth4_speed",
+        "eth4_duplexMode",
         "eth4_status",
         "eth4_vlan",
         "eth4_vlanName",
+        "eth4_vrfId",
         "eth4_router",
         "eth4_router_ip",
         "eth4_networkvlanTrunks",
         "eth5_mac",
+        "eth5_duplexMode",
         "eth5_speed",
         "eth5_status",
         "eth5_vlan",
         "eth5_vlanName",
+        "eth5_vrfId",
         "eth5_router",
         "eth5_router_ip",
         "eth5_networkvlanTrunks",
         "eth6_mac",
+        "eth6_duplexMode",
         "eth6_speed",
         "eth6_status",
         "eth6_vlan",
         "eth6_vlanName",
+        "eth6_vrfId",
         "eth6_router",
         "eth6_router_ip",
         "eth6_networkvlanTrunks",
         "eth7_mac",
         "eth7_speed",
+        "eth7_duplexMode",
         "eth7_status",
         "eth7_vlan",
         "eth7_vlanName",
+        "eth7_vrfId",
         "eth7_router",
         "eth7_router_ip",
         "eth7_networkvlanTrunks",
         "eth8_mac",
         "eth8_speed",
+        "eth8_duplexMode",
         "eth8_status",
         "eth8_vlan",
         "eth8_vlanName",
+        "eth8_vrfId",
         "eth8_router",
         "eth8_router_ip",
         "eth8_networkvlanTrunks",
         "eth9_mac",
         "eth9_speed",
+        "eth9_duplexMode",
         "eth9_status",
         "eth9_vlan",
         "eth9_vlanName",
+        "eth9_vrfId",
         "eth9_router",
         "eth9_router_ip",
         "eth9_networkvlanTrunks",
         "eth10_mac",
         "eth10_speed",
+        "eth10_duplexMode",
         "eth10_status",
         "eth10_vlan",
         "eth10_vlanName",
+        "eth10_vrfId",
         "eth10_router",
         "eth10_router_ip",
         "eth10_networkvlanTrunks",
         "mgmt0_mac",
         "mgmt0_primaryIpAddress",
         "mgmt0_speed",
+        "mgmt0_duplexMode",
         "mgmt0_status",
         "mgmt0_vlan",
         "mgmt0_vlanName",
@@ -396,22 +442,26 @@ def createVlanDetail(trunkedvlan_df):
     worksheet.autofilter(0,0,totalrows,totalcols)
     return
 
-def createVlanPivot(trunkedvlan_df):
+def createServersByTrunkedVlan(trunkedvlan_df):
     """
     Create a Pivot of list of Servers per tagged VLAN
     """
 
-    logging.info("Creating VLAN pivot table.")
+    logging.info("Creating Servers by TrunkedVLAN pivot table.")
     vlanpivot = pd.pivot_table(trunkedvlan_df, index=["datacenterName", "vlanNumber", "vlanName",  "fullyQualifiedDomainName", "networkGatewayMemberFlag", "operatingSystem", "version"],
                                values=["interface"],
-                               aggfunc={"interface": "nunique"}, margins=True, margins_name="Count", fill_value=0)
-    vlanpivot.to_excel(writer, 'trunkedVlanPivot')
-    worksheet = writer.sheets['trunkedVlanPivot']
+                               aggfunc={"interface": "nunique"}, margins=True, margins_name="Count", fill_value=0).reset_index()
+    vlanpivot.to_excel(writer, 'ServersByTrunkedVlanPivot')
+    worksheet = writer.sheets['ServersByTrunkedVlanPivot']
     leftformat = workbook.add_format({'align': 'left'})
-    worksheet.set_column("A:A", 20, leftformat)
+    worksheet.set_column("A:A", 5, leftformat)
     worksheet.set_column("B:B", 20, leftformat)
     worksheet.set_column("C:C", 40, leftformat)
     worksheet.set_column("D:D", 60, leftformat)
+    worksheet.set_column("E:E", 60, leftformat)
+    worksheet.set_column("F:I", 20, leftformat)
+    totalrows,totalcols=trunkedvlan_df.shape
+    worksheet.autofilter(0,0,totalrows,totalcols)
 
     return
 
@@ -422,15 +472,35 @@ def createServersbyOsPivot(hardware_df):
     logging.info("Creating Servers by OS table.")
     vlanpivot = pd.pivot_table(hardware_df, index=["operatingSystem", "version", "fullyQualifiedDomainName"],
                                values=["id"],
-                               aggfunc={"id": "nunique"}, margins=True, margins_name="Count", fill_value=0)
+                               aggfunc={"id": "nunique"}, margins=True, margins_name="Count", fill_value=0).reset_index()
     vlanpivot.to_excel(writer, 'ServerByOSPivot')
     worksheet = writer.sheets['ServerByOSPivot']
     leftformat = workbook.add_format({'align': 'left'})
-    worksheet.set_column("A:A", 20, leftformat)
-    worksheet.set_column("B:B", 20, leftformat)
-    worksheet.set_column("C:C", 40, leftformat)
+    worksheet.set_column("A:A", 10, leftformat)
+    worksheet.set_column("B:B", 30, leftformat)
+    worksheet.set_column("C:C", 30, leftformat)
     worksheet.set_column("D:D", 60, leftformat)
+    totalrows,totalcols=trunkedvlan_df.shape
+    worksheet.autofilter(0,0,totalrows,totalcols)
 
+def createTaggedVlanbyServersPivot(hardware_df):
+    """
+    Create a list of server for each OS
+    """
+    logging.info("Creating TaggedVlan by Server table.")
+    vlanpivot = pd.pivot_table(hardware_df, index=["fullyQualifiedDomainName",  "operatingSystem", "version", "datacenterName", "vlanNumber", "vlanName"],
+                               values=["interface"],
+                               aggfunc={"interface": "nunique"}, margins=True, margins_name="Count", fill_value=0).reset_index()
+    vlanpivot.to_excel(writer, 'TaggedVlanByServer')
+    worksheet = writer.sheets['TaggedVlanByServer']
+    leftformat = workbook.add_format({'align': 'left'})
+    worksheet.set_column("A:A", 10, leftformat)
+    worksheet.set_column("B:B", 30, leftformat)
+    worksheet.set_column("C:C", 30, leftformat)
+    worksheet.set_column("D:D", 20, leftformat)
+    worksheet.set_column("E:H", 30, leftformat)
+    totalrows,totalcols=trunkedvlan_df.shape
+    worksheet.autofilter(0,0,totalrows,totalcols)
 
 if __name__ == "__main__":
     setup_logging()
@@ -503,7 +573,8 @@ if __name__ == "__main__":
 
     createHWDetail(hardware_df)
     createVlanDetail(trunkedvlan_df)
-    createVlanPivot(trunkedvlan_df)
+    createServersByTrunkedVlan(trunkedvlan_df)
+    createTaggedVlanbyServersPivot(trunkedvlan_df)
     createServersbyOsPivot(hardware_df)
     writer.save()
 

@@ -120,17 +120,18 @@ if __name__ == "__main__":
     # BUILD TABLES
     #
     networkFormat = [
-        ('Interface', 'interface', 10),
-        ('MAC ', 'mac', 17),
+        ('Iface', 'interface', 6),
+        ('MAC ', 'macAddress', 17),
         ('IpAddress', 'primaryIpAddress', 16),
-        ('speed', 'speed', 5),
-        ('status', 'status', 10),
+        ('Speed', 'speed', 5),
+        ('Duplex', 'duplexMode', 6),
+        ('Status', 'status', 8),
         ('Vlan', 'vlan', 5),
+        ('FQDN', 'vlan_fqdn',16),
         ('Vlan Name', 'vlanName', 20),
-        ('Switch', 'switch', 17),
-        ('Router', 'router', 17),
-        ('Manufacturer', 'router_mfg', 12),
-        ('RouterIP', 'router_ip', 16)
+        ('Router', 'router', 14),
+        ('RouterIP', 'router_ip', 16),
+        ('VRF_ID', 'vrfDefinitionId',8)
     ]
 
     serverFormat = [
@@ -144,8 +145,8 @@ if __name__ == "__main__":
 
     trunkFormat = [
         ('Interface', 'interface', 10),
-        ('Vlan #', 'vlanNumber', 8),
-        ('VlanName', 'vlanName', 20)
+        ('Vlan', 'fqdn', 16),
+        ('VlanName', 'vlanName', 25)
     ]
 
     storageFormat = [
@@ -167,8 +168,8 @@ if __name__ == "__main__":
         offset = 0
         while True:
             hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenterName,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
-                    'backendNetworkComponents.router,backendNetworkComponents.router.primaryIpAddress,backendNetworkComponents.networkVlanTrunks.networkVlan,backendNetworkComponents.uplinkComponent,frontendNetworkComponentCount,frontendNetworkComponents,frontendNetworkComponents.router,'
-                    'frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents,activeComponents,networkGatewayMemberFlag,softwareComponents')
+                    'backendNetworkComponents.router,backendNetworkComponents.router.primaryIpAddress,backendNetworkComponents.duplexMode,backendNetworkComponents.uplinkComponent,frontendNetworkComponentCount,frontendNetworkComponents,frontendNetworkComponents.router,'
+                    'frontendNetworkComponents.duplexMode,frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents,activeComponents,networkGatewayMemberFlag,softwareComponents')
 
             logging.info("Requesting Hardware for account {}, limit={} @ offset {}, returned={}".format(ims_account, limit, offset, len(hardwarelist)))
             if len(hardwarelist) == 0:
@@ -264,32 +265,42 @@ if __name__ == "__main__":
                 for frontendnetworkcomponent in frontendnetworkcomponents:
                     network = {}
                     network['interface'] = "{}{}".format(frontendnetworkcomponent['name'], frontendnetworkcomponent['port'])
-                    network['mac'] = frontendnetworkcomponent['macAddress']
+
+                    if 'macAddress' in frontendnetworkcomponent:
+                        network['macAddress'] = frontendnetworkcomponent['macAddress']
+
                     if 'primaryIpAddress' in frontendnetworkcomponent:
                         network['primaryIpAddress'] = frontendnetworkcomponent['primaryIpAddress']
-                    network['speed'] = frontendnetworkcomponent['speed']
-                    network['status'] = frontendnetworkcomponent['status']
-                    if 'hardware' in frontendnetworkcomponent['uplinkComponent']:
-                       network['switch'] = frontendnetworkcomponent['uplinkComponent']['hardware']['hostname']
-                    else:
-                       network['switch'] = ""
 
-                    network['router'] = frontendnetworkcomponent['router']['hostname']
-                    if 'hardwareChassis' in frontendnetworkcomponent['router']:
-                        network['router_mfg'] = frontendnetworkcomponent['router']['hardwareChassis']['manufacturer']
-                    else:
-                        network['router_mfg'] = ""
+                    if 'speed' in frontendnetworkcomponent:
+                        network['speed'] = frontendnetworkcomponent['speed']
+
+                    if 'status' in frontendnetworkcomponent:
+                        network['status'] = frontendnetworkcomponent['status']
+
+                    if 'router' in frontendnetworkcomponent:
+                        network['router'] = frontendnetworkcomponent['router']['hostname']
+
                     if 'primaryIpAddress' in frontendnetworkcomponent['router']:
                         network['router_ip'] = frontendnetworkcomponent['router']['primaryIpAddress']
+
+                    if 'duplexMode' in frontendnetworkcomponent:
+                        network['duplexMode'] = frontendnetworkcomponent['duplexMode']['keyname']
+
+                    if 'networkVlanId' in frontendnetworkcomponent['uplinkComponent']:
+                        network['networkVlanId'] = frontendnetworkcomponent['uplinkComponent']['networkVlanId']
                     else:
-                        network['router_ip'] = ""
-                    if len(hardware['networkVlans']) > 1:
-                        network['vlan'] = hardware['networkVlans'][1]['vlanNumber']
-                        if 'name' in hardware['networkVlans'][1].keys():
-                            if 'name' in hardware['networkVlans'][0]:
-                                network['vlanName'] = hardware['networkVlans'][0]['name']
-                            else:
-                                network['vlanName'] = ""
+                        logging.error("No networkVlanId for frontendnetworkcomponent:{}".format(frontendnetworkcomponent))
+
+                    if len(hardware['networkVlans']) > 0:
+                        for networkvlan in hardware['networkVlans']:
+                            if network['networkVlanId'] == networkvlan['id']:
+                                if 'vlanNumber' in networkvlan: network['vlan'] = networkvlan['vlanNumber']
+                                if 'fullyQualifiedName' in networkvlan: network['vlan_fqdn'] = networkvlan['fullyQualifiedName']
+                                if 'name' in networkvlan: network['vlanName'] = networkvlan['name']
+                                if 'vrfDefinitionId' in networkvlan: network['vrfDefinitionId'] = networkvlan['vrfDefinitionId']
+                    else:
+                        logging.error("No vlans hwardware:{}".format(hardware))
 
                     data.append(network)
                 output(TablePrinter(networkFormat, ul='=')(data))
@@ -298,42 +309,56 @@ if __name__ == "__main__":
                 # POPULATE TABLE WITH BACKEND DATA
                 #
 
-                # print (json.dumps(backendnetworkcomponents,indent=4))
                 interfacedata = []
                 trunkdata = []
                 for backendnetworkcomponent in backendnetworkcomponents:
                     network = {}
                     network['interface'] = "{}{}".format(backendnetworkcomponent['name'], backendnetworkcomponent['port'])
-                    network['mac'] = backendnetworkcomponent['macAddress']
+
+                    if 'macAddress' in backendnetworkcomponent:
+                        network['macAddress'] = backendnetworkcomponent['macAddress']
                     if 'primaryIpAddress' in backendnetworkcomponent:
                         network['primaryIpAddress'] = backendnetworkcomponent['primaryIpAddress']
-                    network['speed'] = backendnetworkcomponent['speed']
-                    network['status'] = backendnetworkcomponent['status']
-                    network['vlan'] = hardware['networkVlans'][0]['vlanNumber']
+                    if 'speed' in backendnetworkcomponent:
+                        network['speed'] = backendnetworkcomponent['speed']
+                    if 'status' in backendnetworkcomponent:
+                        network['status'] = backendnetworkcomponent['status']
 
-                    if 'name' in hardware['networkVlans'][0].keys(): network['vlanName'] = hardware['networkVlans'][0][
-                        'name']
+                    # find matching VLAN
+                    if 'networkVlanId' in backendnetworkcomponent['uplinkComponent']:
+                        network['networkVlanId'] = backendnetworkcomponent['uplinkComponent']['networkVlanId']
+                    else:
+                        logging.error("No networkVlanId for backendnetworkcomponent:{}".format(backendnetworkcomponent))
 
-                    if 'hardware' in backendnetworkcomponent['uplinkComponent']:
-                        network['switch'] = backendnetworkcomponent['uplinkComponent']['hardware']['hostname']
+                    if len(hardware['networkVlans']) > 0:
+                        for networkvlan in hardware['networkVlans']:
+                            if network['networkVlanId'] == networkvlan['id']:
+                                if 'vlanNumber' in networkvlan: network['vlan'] = networkvlan['vlanNumber']
+                                if 'fullyQualifiedName' in networkvlan: network['vlan_fqdn'] = networkvlan['fullyQualifiedName']
+                                if 'name' in networkvlan: network['vlanName'] = networkvlan['name']
+                                if 'vrfDefinitionId' in networkvlan: network['vrfDefinitionId'] = networkvlan['vrfDefinitionId']
                     else:
-                        network['switch'] = ""
-                    network['router'] = backendnetworkcomponent['router']['hostname']
-                    if 'hardwareChassis' in backendnetworkcomponent['router']:
-                        network['router_mfg'] = backendnetworkcomponent['router']['hardwareChassis']['manufacturer']
-                    else:
-                        network['router_mfg'] = ""
+                        logging.error("No vlans hwardware:{}".format(hardware))
+
+                    if 'router' in backendnetworkcomponent:
+                        if 'hostname' in backendnetworkcomponent['router']:
+                            network['router'] = backendnetworkcomponent['router']['hostname']
+
                     if 'primaryIpAddress' in backendnetworkcomponent['router']:
                         network['router_ip'] = backendnetworkcomponent['router']['primaryIpAddress']
-                    else:
-                        network['router_ip'] = ""
+
+                    if 'duplexMode' in backendnetworkcomponent:
+                        network['duplexMode'] = backendnetworkcomponent['duplexMode']['keyname']
+
                     interfacedata.append(network)
-                    #for trunk in backendnetworkcomponent['trunkedvlans']:
+
                     for trunk in backendnetworkcomponent['networkVlanTrunks']:
                         trunkedvlan = {}
                         trunkedvlan['interface'] = network['interface']
                         trunkedvlan['vlanNumber'] = trunk['networkVlan']['vlanNumber']
-                        if 'name' in trunk['networkVlan'].keys(): trunkedvlan['vlanName'] = trunk['networkVlan']['name']
+                        trunkedvlan['fqdn'] = trunk['networkVlan']['fullyQualifiedName']
+                        if 'name' in trunk['networkVlan']:
+                            trunkedvlan['vlanName'] = trunk['networkVlan']['name']
                         trunkdata.append(trunkedvlan)
 
                 output("")
@@ -351,71 +376,56 @@ if __name__ == "__main__":
                 data = []
                 network = {}
 
+                # Check if there is a Mgmt Network
                 if 'name' in mgmtnetworkcomponent:
                     network['interface'] = "{}{}".format(mgmtnetworkcomponent['name'], mgmtnetworkcomponent['port'])
-                else:
-                    network['interface'] = ""
 
-                if 'ipmiMacAddress' in mgmtnetworkcomponent:
-                    network['mac'] = mgmtnetworkcomponent['ipmiMacAddress']
-                else:
-                    network['mac'] = ""
+                    if 'ipmiMacAddress' in mgmtnetworkcomponent:
+                        network['macAddress'] = mgmtnetworkcomponent['ipmiMacAddress']
 
-                if 'ipmiIpAddress' in mgmtnetworkcomponent:
-                    network['primaryIpAddress'] = mgmtnetworkcomponent['ipmiIpAddress']
-                else:
-                    network['primaryIpAddress'] = ""
 
-                if 'speed' in mgmtnetworkcomponent:
-                    network['speed'] = mgmtnetworkcomponent['speed']
-                else:
-                    network['speed'] = ""
-                if 'status' in mgmtnetworkcomponent:
-                    network['status'] = mgmtnetworkcomponent['status']
-                else:
-                    network['status'] = ""
-
-                if len(hardware['networkVlans']) > 0:
-                    network['vlan'] = hardware['networkVlans'][0]['vlanNumber']
-                else:
-                    network['vlan'] = ""
-
-                if len(hardware['networkVlans']) > 0:
-                    if 'name' in hardware['networkVlans'][0].keys():
-                        network['vlanName'] = hardware['networkVlans'][0]['name']
+                    if 'ipmiIpAddress' in mgmtnetworkcomponent:
+                        network['primaryIpAddress'] = mgmtnetworkcomponent['ipmiIpAddress']
                     else:
-                        network['vlanName'] = ""
+                        network['primaryIpAddress'] = ""
+
+                    if 'speed' in mgmtnetworkcomponent:
+                        network['speed'] = mgmtnetworkcomponent['speed']
+
+                    if 'status' in mgmtnetworkcomponent:
+                        network['status'] = mgmtnetworkcomponent['status']
+
+                    if 'duplexMode' in mgmtnetworkcomponent:
+                        network['duplexMode'] = mgmtnetworkcomponent['duplexMode']['keyname']
+
+                    # find matching VLAN
+
+                    if 'networkVlanId' in mgmtnetworkcomponent['uplinkComponent']:
+                        network['networkVlanId'] = mgmtnetworkcomponent['uplinkComponent']['networkVlanId']
+                    else:
+                        logging.error("No networkVlanId for mgmtnetworkcomponentt:{}".format(mgmtnetworkcomponent))
+
+
+                    if len(hardware['networkVlans']) > 0:
+                        for networkvlan in hardware['networkVlans']:
+                            if network['networkVlanId'] == networkvlan['id']:
+                                if 'vlanNumber' in networkvlan: network['vlan'] = networkvlan['vlanNumber']
+                                if 'fullyQualifiedName' in networkvlan: network['vlan_fqdn'] = networkvlan['fullyQualifiedName']
+                                if 'name' in networkvlan: network['vlanName'] = networkvlan['name']
+                                if 'vrfDefinitionId' in networkvlan: network['vrfDefinitionId'] = networkvlan['vrfDefinitionId']
+                    else:
+                        logging.error("No vlans hwardware:{}".format(hardware))
+
+                    if 'router' in mgmtnetworkcomponent:
+                        if 'hostname' in mgmtnetworkcomponent['router']:
+                            network['router'] = mgmtnetworkcomponent['router']['hostname']
+
+                        if 'primaryIpAddress' in mgmtnetworkcomponent['router']:
+                            network['router_ip'] = mgmtnetworkcomponent['router']['primaryIpAddress']
+
+                    data.append(network)
                 else:
-                    network['vlanName'] = ""
-
-                if 'uplinkComponent' in mgmtnetworkcomponent:
-                    if 'hardware' in mgmtnetworkcomponent['uplinkComponent']:
-                        network['switch'] = mgmtnetworkcomponent['uplinkComponent']['hardware']['hostname']
-                    else:
-                        network['switch'] = ""
-                else:
-                    network['switch'] = ""
-
-                if 'router' in mgmtnetworkcomponent:
-                    if 'hostname' in mgmtnetworkcomponent['router']:
-                        network['router'] = mgmtnetworkcomponent['router']['hostname']
-                    else:
-                        network['router'] = ""
-
-                    if 'hardwareChassis' in mgmtnetworkcomponent['router']:
-                        network['router_mfg'] = mgmtnetworkcomponent['router']['hardwareChassis']['manufacturer']
-                    else:
-                        network['router_mfg'] = ""
-                    if 'primaryIpAddress' in mgmtnetworkcomponent['router']:
-                        network['router_ip'] = mgmtnetworkcomponent['router']['primaryIpAddress']
-                    else:
-                        network['router_ip'] = ""
-                else:
-                    network['router'] = ""
-                    network['router_mfg'] = ""
-                    network['router_ip'] = ""
-
-                data.append(network)
+                    logging.error("No Mgmt Network for hardware: {}".format(hardware))
 
                 output(TablePrinter(networkFormat, ul='=')(data))
                 output("")
