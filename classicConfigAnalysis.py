@@ -51,7 +51,7 @@ def getinventory():
     offset = 0
 
     while True:
-        hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenterName,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
+        hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenter,datacenterName,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
                 'backendNetworkComponents.router,backendNetworkComponents.router.primaryIpAddress,backendNetworkComponents.uplinkComponent,frontendNetworkComponentCount,frontendNetworkComponents,frontendNetworkComponents.router,'
                 'frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents,networkGatewayMemberFlag,softwareComponents,frontendNetworkComponents.duplexMode,backendNetworkComponents.duplexMode')
 
@@ -75,6 +75,7 @@ def getinventory():
 
             # OBTAIN INFORMATION ABOUT PRIVATE (BACKEND) INTERFACES
             backendnetworkcomponents = []
+
             for backend in hardware['backendNetworkComponents']:
                 if backend['name'] == "eth":
                     backendnetworkcomponent = backend
@@ -101,13 +102,18 @@ def getinventory():
                 os = ""
                 osversion = ""
 
+            if 'datacenterName' not in hardware:
+                datacenterName = hardware['datacenter']['name']
+            else:
+                datacenterName = hardware['datacenterName']
+
             output = {
                 "id": hardware['id'],
                 "fullyQualifiedDomainName": hardware['fullyQualifiedDomainName'],
                 "networkGatewayMemberFlag": hardware['networkGatewayMemberFlag'],
                 "operatingSystem": os,
                 "version": osversion,
-                "datacenterName": hardware['datacenterName'],
+                "datacenterName": datacenterName,
                 "manufacturerSerialNumber": hardware['manufacturerSerialNumber'],
                 "provisionDate": hardware['provisionDate'],
                 "notes": hardware['notes']

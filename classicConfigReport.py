@@ -167,7 +167,7 @@ if __name__ == "__main__":
         limit = 10
         offset = 0
         while True:
-            hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenterName,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
+            hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenter,datacenterName,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
                     'backendNetworkComponents.router,backendNetworkComponents.router.primaryIpAddress,backendNetworkComponents.duplexMode,backendNetworkComponents.uplinkComponent,frontendNetworkComponentCount,frontendNetworkComponents,frontendNetworkComponents.router,'
                     'frontendNetworkComponents.duplexMode,frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents,activeComponents,networkGatewayMemberFlag,softwareComponents')
 
@@ -218,6 +218,11 @@ if __name__ == "__main__":
                 else:
                     os = ""
 
+                if 'datacenterName' not in hardware:
+                    datacenterName = hardware['datacenter']['name']
+                else:
+                    datacenterName = hardware['datacenterName']
+
                 output(
                     "__________________________________________________________________________________________________________________")
                 output("")
@@ -226,7 +231,7 @@ if __name__ == "__main__":
                 output("Operating System: %s" % os)
                 output("OS Version      : %s" % osversion)
                 output("Gateway Member  : %s" % (hardware['networkGatewayMemberFlag']))
-                output("Datacenter      : %s" % (hardware['datacenterName']))
+                output("Datacenter      : %s" % (datacenterName))
                 output("Serial #        : %s" % (hardware['manufacturerSerialNumber']))
                 output("Provision Date  : %s" % (hardware['provisionDate']))
                 output("Notes           : %s" % (hardware['notes']))
