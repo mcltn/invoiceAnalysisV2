@@ -271,7 +271,7 @@ def getInvoiceDetail(startdate, enddate):
         return invoiceList
 
     for invoice in invoiceList:
-        if float(invoice['invoiceTotalAmount']) == 0:
+        if (float(invoice['invoiceTotalAmount']) == 0) and (float(invoice['invoiceTotalRecurringAmount']) == 0):
             continue
 
         invoiceID = invoice['id']
