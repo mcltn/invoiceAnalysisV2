@@ -550,7 +550,9 @@ def createType1Report(filename, classicUsage):
     Type 1 Output meets the majority of SLIC account setup.
     Break out of invoice data is based on a traditional IaaS vs PaaS view.
     IaaS Top Sheet Detail is split by all classic Infrastructure broken out by IMS Invoice, with splits for VMware Licensing, Classic Object Storage, and all other IaaS
-    PaaS Top Sheet Detail is atches the definition of IMS as any usaged billed through IMS from DSW.  Additional detail is provided to assist in reconcilation
+    PaaS Top Sheet Detail is atches the definition of IMS as any usage billed through IMS from DSW.  Additional detail is provided to assist in reconcilation
+
+    Command-line Flags can be set to control which tabs are created
     """
 
     def createDetailTab(classicUsage):
@@ -966,26 +968,32 @@ def createType1Report(filename, classicUsage):
     Create each tab in Excel Worksheet
     """
     if len(classicUsage) > 0:
-        createDetailTab(classicUsage)
+        if detailFlag:
+            createDetailTab(classicUsage)
         """
         Create IaaS, PaaS, and Credit Top Sheets to match
         each month's CFTS invoices generated
         """
-        createIaasTopSheet(classicUsage)
-        createPaasTopSheet(classicUsage)
-        createCreditTopSheet(classicUsage)
+        if reconciliationFlag:
+            createIaasTopSheet(classicUsage)
+            createPaasTopSheet(classicUsage)
+            createCreditTopSheet(classicUsage)
+
         """
-        Create additional Detail to help understand
-        month to month usage
+        Create additional Summary Usage and Category Detail
         """
         createCategoryGroup(classicUsage)
         createCategoryDetail(classicUsage)
-        #createPaaSInvoiceDetail(classicUsage)
-        createClassicCOS(classicUsage)
-        createHourlyVirtualServers(classicUsage)
-        createMonthlyVirtualServers(classicUsage)
-        createHourlyBareMetalServers(classicUsage)
-        createMonthlyBareMetalServers(classicUsage)
+
+        if cosdetailFlag:
+            createClassicCOS(classicUsage)
+
+        if serverDetailFlag:
+            createHourlyVirtualServers(classicUsage)
+            createMonthlyVirtualServers(classicUsage)
+            createHourlyBareMetalServers(classicUsage)
+            createMonthlyBareMetalServers(classicUsage)
+
         """
         if --storage specified on command line provide
         additional mapping of current storage comments to billing
@@ -1210,14 +1218,20 @@ def createType2Report(filename, classicUsage):
     # combine one time amounts and total recurring charge in datafrane
     classicUsage["totalAmount"] = classicUsage["totalOneTimeAmount"] + classicUsage["totalRecurringCharge"] + classicUsage["childTotalRecurringCharge"]
 
-    # create pivots for various tabs
-    createDetailTab(classicUsage)
+    # create pivots for various tabs for Type2 SLIC based on flags
+    if detailFlag:
+        createDetailTab(classicUsage)
+
     createInvoiceSummary(classicUsage)
     createCategoorySummary(classicUsage)
-    createIaaSInvoiceDetail(classicUsage)
-    createClassicCombined(classicUsage)
-    createClassicCOS(classicUsage)
-    createPaaSInvoiceDetail(classicUsage)
+
+    if reconciliationFlag:
+        createIaaSInvoiceDetail(classicUsage)
+        createClassicCombined(classicUsage)
+    if cosdetailFlag:
+        createClassicCOS(classicUsage)
+    if reconciliationFlag:
+        createPaaSInvoiceDetail(classicUsage)
     if storageFlag:
         createStorageTab(classicUsage)
     writer.save()
@@ -1310,14 +1324,22 @@ if __name__ == "__main__":
     parser.add_argument("--sendGridSubject", default=os.environ.get('sendGridSubject', None), help="SendGrid email subject for output email")
     parser.add_argument("--output", default=os.environ.get('output', 'invoice-analysis.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
     parser.add_argument("--SL_PRIVATE", default=False, action=argparse.BooleanOptionalAction, help="Use IBM Cloud Classic Private API Endpoint")
-    parser.add_argument('--storage', default=False, action=argparse.BooleanOptionalAction, help="Include File, BLock and Classic Cloud Object Storage detail analysis.")
     parser.add_argument('--type2', default=False, action=argparse.BooleanOptionalAction, help="Break out detail by 'D codes' consistent with CFTS Sprint process used for multiple work numbers.")
+    parser.add_argument('--storage', default=False, action=argparse.BooleanOptionalAction, help="Include File, BLock and Classic Cloud Object Storage detail analysis.")
+    parser.add_argument('--detail', default=True, action=argparse.BooleanOptionalAction, help="Whether to Write detail tabs to worksheet.")
+    parser.add_argument('--reconciliation', default=True, action=argparse.BooleanOptionalAction, help="Whether to write invoice reconciliation tabs to worksheet.")
+    parser.add_argument('--serverdetail', default=True, action=argparse.BooleanOptionalAction, help="Whether to write server detail tabs to worksheet.")
+    parser.add_argument('--cosdetail', default=False, action=argparse.BooleanOptionalAction, help="Whether to write Classic OBject Storage tab to worksheet.")
 
     args = parser.parse_args()
 
-    #set Storage and type2 pivot flag
+    """Set Flags to determine which Tabs are created in output"""
     storageFlag = args.storage
     type2Flag = args.type2
+    detailFlag = args.detail
+    reconciliationFlag = args.reconciliation
+    serverDetailFlag = args.serverdetail
+    cosdetailFlag =args.cosdetail
 
     """
     If no APIKEY set, then check for internal credentials
