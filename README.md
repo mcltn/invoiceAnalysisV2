@@ -117,9 +117,9 @@ Methodology for reconciliation
 ````
 $ pip install -r requirements.txt
 ````
-2. For Internal IMS users who wish to use internal credentials (with Yubikey 2FA) you must manually uninstall the Public SoftLayer SDK and manually 
-build the internal SDK for this script to function properly.  Additionally, while executing script you must be connected via Global Protect VPN 
-while running reports and will be prompted for your 2FA yubikey at execution.   [Internal SDK & Instructions](https://github.ibm.com/SoftLayer/internal-softlayer-cli)
+2. For Internal IBM IMS users who wish to use internal credentials (with Yubikey 2FA) you must manually uninstall the Public SoftLayer SDK and manually 
+build the internal SDK for this script to function properly.  Additionally, while executing script you must be connected securely via Global Protect VPN 
+to IMS while running reports and will be prompted for your 2FA yubikey at execution time.   [Internal SDK & Instructions](https://github.ibm.com/SoftLayer/internal-softlayer-cli)
 ```azure
 $ pip uninstall SoftLayer
 $ git clone https://github.ibm.com/SoftLayer/internal-softlayer-cli
