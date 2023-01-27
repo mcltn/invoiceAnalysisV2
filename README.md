@@ -1,7 +1,7 @@
 # IBM Cloud Classic Infrastructure Invoice Analysis Report V2
-*invoiceAnalysis.py* collects IBM Cloud Classic Infrastructure NEW, RECURRING, ONE-TIME-CHARGES and CREDIT invoices between the months
-specified, then consolidates the data into an Excel worksheet for billing analysis.  In addition to consolidation of the detailed data and
-formatting consistent with SLIC/CFTS invoices, pivot tables are created to aid in reconiliation of those invoices released each month.
+*invoiceAnalysis.py* collects IBM Cloud Classic Infrastructure NEW, RECURRING, ONE-TIME-CHARGES and CREDIT invoices between invoice months
+specified, then consolidates the data into an Excel worksheet for billing analysis.  All charges are aligned to the IBM SLIC/CFTS invoice cycle of the 20th to 19th of a month.
+In addition to consolidation of the detailed data and formatting consistent with SLIC/CFTS invoices, pivot tables are created to aid in reconiliation of  invoices charges.
 
 ### Required Files
 Script | Description
@@ -23,12 +23,13 @@ logging.json | LOGGER config used by script
 
 
 ### Output Description (invoiceAnalysis.py)
-An Excel worksheet is created with multiple tabs from the collected data from the IBM Cloud Classic Invoices, which will include PaaS usage for the purpose of reconciliation of charges.   _Tabs are only be created if there are related resources on the collected invoices._
-In general SLIC Invoice Month contains all RECURRING, NEW, ONE-TIME-CHARGE, and CREDIT invoices between the 20th of the previous month and the 19th of the current month.  PaaS Usage appears on the RECURRING invoice one month delayed and
-as such won't appear on a SLIC/CFTS invoice for roughly 60 days. (i.e April PaaS Usage, will appear on the June 1st, RECURRING invoice and be on the end of June SLIC/CFTS invoice.
+An Excel worksheet is created with multiple tabs from the collected data from the IBM Cloud Classic Invoices, which will include PaaS usage for the purpose of reconciliation of charges.
+In general SLIC/CFTS Invoice Month contains all RECURRING, NEW, ONE-TIME-CHARGE, and CREDIT invoices between the 20th of the previous month and the 19th of the current month.  If a range of
+months is specifiied, tabs will either be created for each month, or a single table will display monthly usage side by side.   Note PaaS Usage appears on the RECURRING invoice in arrears 
+for two months prior.   (i.e April PaaS Usage, will appear on the June 1st, RECURRING invoice and be on the SLIC/CFTS received at the end of June.
 
-Up to 3 SLIC/CFTS Invoices will be generated each month.  One for IaaS charges, one for PaaS Charges, and one for Credit Charges.  Depending on how the SLIC account is configured and whether there are manual billing processes the
-definition of PaaS can change and how the charges are displayed on the SLIC/CFTS invoice changes.  These are described below as Type 1 or Type 2.
+Up to 3 SLIC/CFTS Invoices are generated each month.  One for IaaS charges, one for PaaS Charges, and one for Credit Charges.  Depending on how the SLIC account is configured and whether
+there are manual billing processes required this can change the format of invoices.  These are described below as Type 1 or Type 2 below.
 
 ### Type 1 (most common) Reconciliation Approach (Default Output)
 
@@ -38,7 +39,7 @@ definition of PaaS can change and how the charges are displayed on the SLIC/CFTS
 |---------------|---------|----------------------|-------------------
 | Detail | True | --no-detail | Detailed list of every invoice line item (including chidlren line items) from all invoices types between date range specified.
 
-**Tabs created for each month in range specified.**
+**Tabs created for each month in range specified and used for reconciliation against invoicese.**
 
 | Tab Name      | Default | flag to change default| Description of Tab 
 |---------------|---------|----------------------|-------------------
@@ -47,7 +48,7 @@ definition of PaaS can change and how the charges are displayed on the SLIC/CFTS
 | PaaS_YYYY-MM  | True | --no-reconcilliation | Table matching portal RECURRING invoices PaaS Charges whcih are included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for portal invoice (always the RECURRING), though the detail is provided at a service level on this tab.  PaaS charges are for usage 60 days in arrears. 
 | Credit-YYYY-MM |  True | --no-reconcilliation | Table of Credit Invoics to their corresponding IBM SLIC/CFTS invoice(s). 
 
-**Tabs which are created with range of months displayed as columns in each tab**
+**Tabs which are created with range of months displayed as columns in each tab and used for understanding month to month change**
 
 | Tab Name      | Default | flag to change default| Description of Tab 
 |---------------|---------|----------------------|-------------------
