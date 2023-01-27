@@ -16,7 +16,7 @@ logging.json | LOGGER config used by script
 
 ### Identity & Access Management Requirements
 | APIKEY                                     | Description                                                               | Min Access Permissions
-|--------------------------------------------|---------------------------------------------------------------------------| ----------------------
+|--------------------------------------------|---------------------------------------------------------------------------|----------------------
 | IBM Cloud API Key                          | API Key used to pull classic and PaaS invoices and Usage Reports.         | IAM Billing Viewer Role
 | COS API Key                                | API Key used to write output to specified bucket (if specified)           | COS Bucket Write access to Bucket at specified Object Storage CRN.
 | ims_username, ims_password<br/>ims_account | Credentials for internal IMS access.  | IMS Access to Account|
@@ -32,19 +32,34 @@ definition of PaaS can change and how the charges are displayed on the SLIC/CFTS
 
 ### Type 1 (most common) Reconciliation Approach (Default Output)
 
-Detail tab has every invoice item for all the collected invoices represented as one row each. For invoices with multiple items, each row represents one top level invoice item. All invoice types are included, including CREDIT invoices. The detail tab can be sorted or filtered to find specific dates, billing item id's, or specific services.
-- One tab for each month specified is created.
-  - ***IaaS-YYYY-MM*** tab(s) map each portal invoices IaaS Charges included in that months SLIC/CFTS invoice.  IaaS Charges are split into three categories VMware License Charges, Class COS Charges, and All other Classic IaaS Charges, these amounts should match the SLIC/CFTS invoice.
-  - ***IaaS-YYYY-MM*** tab(s) provide a more detailed breakdown of the IaaS charges, and particular Other Classic IaaS Charges from the IaaS-YYYY-MM tab.   This is information, but only the total will match the SLIC/CFTS invoice.
-  - ***PaaS-YYYY-MM*** tab(s) map each portal invoices PaaS Charges included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for portal invoice (always the RECURRING), though the detail is provided at a service level on this tab.  PaaS charges are for usage 60 days in arrears
-  - ***Credit-YYYY-MM*** tab(s) map each portal invoices Credits to their corresponding IBM CFTS invoice(s) they are credits on. 
-- Each of these tabs will provide a charge column for each month specified.   These tabs are for informational purposes to help understand month to month charges and don't directly match the SLIC/CFTS invoice.
-  - ***CategoryGroupSummary*** tab is a pivot of all charges shown by Invoice Type and Category Groups by month.
-  - ***CategoryDetail*** tab is a pivot of all charges by Invoice Type, Category Group, Category and specific service Detail by month.
-  - ***HrlyVirtualServerPivot*** tab is a pivot of just Hourly Classic VSI's if they exist
-  - ***MnthlyVirtualServerPivot*** tab is a pivot of just monthly Classic VSI's if they exist
-  - ***HrlyBareMetalServerPivot*** tab is a pivot of Hourly Bare Metal Servers if they exist
-  - **MnthlyBareMetalServerPivot*** tab is a pivot table of monthly Bare Metal Server if they exist
+**Detail**
+
+| Tab Name      | Default | flag to change default| Description of Tab 
+|---------------|---------|----------------------|-------------------
+| Detail | True | --no-detail | Detailed list of every invoice line item (including chidlren line items) from all invoices types between date range specified.
+
+**Tabs created for each month in range specified.**
+
+| Tab Name      | Default | flag to change default| Description of Tab 
+|---------------|---------|----------------------|-------------------
+| IaaS_YYYY-MM  | True | --no-reconcilliation | Table matching each portal invoices for IaaS Charges to IBM SLIC/CFTS invoice.  IaaS Charges are split into three categories VMware License Charges, Classic COS Charges, and All other Classic IaaS Charges, these amounts should match the SLIC/CFTS invoice. 
+| IaaS_Detail_YYYY-MM | True | --no-reconcilliation | Table provides a more detailed breakdown of the IaaS charges, and particular Other Classic IaaS Charges from the IaaS-YYYY-MM tab.   This is for information only, and detail will not match the IBM SLIC/CFTS invoice detail. 
+| PaaS_YYYY-MM  | True | --no-reconcilliation | Table matching portal RECURRING invoices PaaS Charges whcih are included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for portal invoice (always the RECURRING), though the detail is provided at a service level on this tab.  PaaS charges are for usage 60 days in arrears. 
+| Credit-YYYY-MM |  True | --no-reconcilliation | Table of Credit Invoics to their corresponding IBM SLIC/CFTS invoice(s). 
+
+**Tabs which are created with range of months displayed as columns in each tab**
+
+| Tab Name      | Default | flag to change default| Description of Tab 
+|---------------|---------|----------------------|-------------------
+| CategoryGroupSummary | True | none | A pivot table of all charges shown by Invoice Type and Category Groups by month. 
+| CategoryDetail | True  | none | A pivot table of all charges by Invoice Type, Category Group, Category and specific service Detail by month. 
+| Classic_COS_Detail | False | --cos-detail | A table of all Classic Cloud Object Storage Usage (if used)
+| HrlyVirtualServerPivot | True | --no-serverdetail | A table of Hourly Classic VSI's if they exist 
+| MnthlyVirtualServerPivot | True | --no-serverdetail | A table of monthly Classic VSI's if they exist 
+| HrlyBareMetalServerPivot | True | --no-serverdetail | A table of Hourly Bare Metal Servers if they exist 
+| MnthlyBareMetalServerPivot | True | --no-serverdetail | A table of monthly Bare Metal Server if they exist 
+| StoragePivot | False | --storage | A Table of all Block and File Storage allocations by location with custom notes (if used)
+
 
 Methodology for reconciliation
 1. First Look at the IaaS-YYYY-MM tab for month being reconciled.  For each portal invoice (NEW, ONE-TIME-CHARGE, and RECURRING), the charges can be split into three categories VMware License Charges, Classic COS Charges, and All other Classic IaaS Charges.  These should match a line item on the SLIC/CFTS invoice.
@@ -61,14 +76,23 @@ detail tab and Virtual and Baremetal pivot tabs to compare month to month change
    ```
 
 ### Type 2 (less common) Reconciliation Approach (specify --type2 on command line to generate this output)
-Excel Tabs Descriptions
-- ***Detail*** is a table of every invoice item (Parent and children) for all the collected invoices represented as one row each.  All invoice types are included, including CREDIT invoices.  The detail tab can be sorted or filtered to find specific dates, billing item id's, or specific services.  
-- ***InvoiceSummary*** is a table of all charges by product group and category for each month by invoice type. This tab can be used to understand changes in month-to-month usage.
-- ***CategorySummary*** is a table  of all charges by product group, category, and description (for example specific VSI sizes or Bare metal server types) to dig deeper into month to month usage changes.
-- ***IaaS_Invoice_Detail*** is a table of all line items expected to appear on the monthly Infrastructure as a Service invoice as a line item.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
-- ***Classic_IaaS_combined*** is a table of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items. 
-- ***Classic_COS_Detail*** is a table of detailed usage from Classic Cloud Object Storage.  Detail is provided for awareness, but will not appear on invoice.
-- ***Platform_Invoice_Detail*** is a table of all the Platform as a Service charges appearing on the  "Platform as a Service" invoice.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
+**Details**
+
+| Tab Name      | Default | flag to change default| Description of Tab 
+|---------------|---------|----------------------|-------------------
+| Detail | True | --no-detail | Detailed list of every invoice line item (including chidlren line items) from all invoices types between date range specified.
+
+**Tabs which are created with range of months displayed as columns in each tab**
+
+| Tab Name                | Default | flag to change default | Description of Tab 
+|-------------------------|---------|------------------------|-------------------
+| InvoiceSummary          | True    |                        | is a table of all charges by product group and category for each month by invoice type. This tab can be used to understand changes in month-to-month usage.
+| CategorySummary         | True    |                        | is a table  of all charges by product group, category, and description (for example specific VSI sizes or Bare metal server types) to dig deeper into month to month usage changes.
+| IaaS_Invoice_Detail     | True    | --no-reconciliation    | is a table of all line items expected to appear on the monthly Infrastructure as a Service invoice as a line item.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
+| Classic_IaaS_combined   | True    | --no-reconciliation    |is a table of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items. 
+| Classic_COS_Detail      | False   | --cosdetail            | is a table of detailed usage from Classic Cloud Object Storage.  Detail is provided for awareness, but will not appear on invoice.
+| Platform_Invoice_Detail | True    | --no-reconciliation    | is a table of all the Platform as a Service charges appearing on the  "Platform as a Service" invoice.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
+| StoragePivot            | False   | --storage              | A Table of all Block and File Storage allocations by location with custom notes (if used)
 
 Methodology for reconciliation
 1. First Look at the IaaS_Invoice_Detail.  These are the line items that should be broken out on the monthly Infrastructure as a Service Invoice.   Items with the same INV_PRODID will appear as one line item.  If correct you should be able to match all but two line items on invoice.
@@ -199,7 +223,7 @@ optional arguments:
 
 ```
 
-### Estimating IBM Cloud Usage
+### Estimating IBM Cloud Usage Month To Date
 
 ```bazaar
 export IC_API_KEY=<ibm cloud apikey>
