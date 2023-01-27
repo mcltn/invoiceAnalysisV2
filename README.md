@@ -43,9 +43,9 @@ there are manual billing processes required this can change the format of invoic
 
 | Tab Name      | Default | flag to change default| Description of Tab 
 |---------------|---------|----------------------|-------------------
-| IaaS_YYYY-MM  | True | --no-reconcilliation | Table matching each portal invoices for IaaS Charges to IBM SLIC/CFTS invoice.  IaaS Charges are split into three categories VMware License Charges, Classic COS Charges, and All other Classic IaaS Charges, these amounts should match the SLIC/CFTS invoice. 
-| IaaS_Detail_YYYY-MM | True | --no-reconcilliation | Table provides a more detailed breakdown of the IaaS charges, and particular Other Classic IaaS Charges from the IaaS-YYYY-MM tab.   This is for information only, and detail will not match the IBM SLIC/CFTS invoice detail. 
-| PaaS_YYYY-MM  | True | --no-reconcilliation | Table matching portal RECURRING invoices PaaS Charges whcih are included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for portal invoice (always the RECURRING), though the detail is provided at a service level on this tab.  PaaS charges are for usage 60 days in arrears. 
+| IaaS_YYYY-MM  | True | --no-reconcilliation | Table matching each portal invoice's IaaS Charges to the IBM SLIC/CFTS invoice.  IaaS Charges are split into three categories VMware License Charges, Classic COS Charges, and All other Classic IaaS Charges for each portal invoice, these amounts should match the SLIC/CFTS invoice amounts and aid in reconciliation. 
+| IaaS_Detail_YYYY-MM | True | --no-reconcilliation | Table provides a more detailed breakdown of the IaaS charges, and particular helps understand Other Classic IaaS Charges from the IaaS-YYYY-MM tab.   This is for information only, and detail will not match the IBM SLIC/CFTS invoice detail. 
+| PaaS_YYYY-MM  | True | --no-reconcilliation | Table matching portal PaaS charges on RECURRING invoice PaaS for that month, which are included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for type1, though the detail is provided at a service level on this tab to faciliate reconcillation.  PaaS charges are for usage 2 months in arrears. 
 | Credit-YYYY-MM |  True | --no-reconcilliation | Table of Credit Invoics to their corresponding IBM SLIC/CFTS invoice(s). 
 
 **Tabs which are created with range of months displayed as columns in each tab and used for understanding month to month change**
