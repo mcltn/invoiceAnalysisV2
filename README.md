@@ -15,17 +15,17 @@ logging.json | LOGGER config used by script
 
 
 ### Identity & Access Management Requirements
-| APIKEY                                     | Description                                                               | Min Access Permissions
-|--------------------------------------------|---------------------------------------------------------------------------|----------------------
-| IBM Cloud API Key                          | API Key used to pull classic and PaaS invoices and Usage Reports.         | IAM Billing Viewer Role
-| COS API Key                                | API Key used to write output to specified bucket (if specified)           | COS Bucket Write access to Bucket at specified Object Storage CRN.
-| ims_username, ims_password<br/>ims_account | Credentials for internal IMS access.  | IMS Access to Account|
+| APIKEY                                     | Description                                                   | Min Access Permissions
+|--------------------------------------------|---------------------------------------------------------------|----------------------
+| IBM Cloud API Key                          | API Key used access classic invoices.                         | IAM Billing Viewer Role
+| COS API Key                                | API Key used to write output to specified bucket (if specified) | COS Bucket Write access to Bucket at specified Object Storage CRN.
+| ims_username, ims_password<br/>ims_account | Credentials for internal IBM IMS access.                      | IMS Access to Account|
 
 
 ### Output Description (invoiceAnalysis.py)
 An Excel worksheet is created with multiple tabs from the collected data from the IBM Cloud Classic Invoices, which will include PaaS usage for the purpose of reconciliation of charges.
 In general SLIC/CFTS Invoice Month contains all RECURRING, NEW, ONE-TIME-CHARGE, and CREDIT invoices between the 20th of the previous month and the 19th of the current month.  If a range of
-months is specifiied, tabs will either be created for each month, or a single table will display monthly usage side by side.   Note PaaS Usage appears on the RECURRING invoice in arrears 
+months is specified, tabs will either be created for each month, or a single table will display monthly usage side by side.   Note PaaS Usage appears on the RECURRING invoice in arrears 
 for two months prior.   (i.e April PaaS Usage, will appear on the June 1st, RECURRING invoice and be on the SLIC/CFTS received at the end of June.
 
 Up to 3 SLIC/CFTS Invoices are generated each month.  One for IaaS charges, one for PaaS Charges, and one for Credit Charges.  Depending on how the SLIC account is configured and whether
