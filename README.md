@@ -147,7 +147,7 @@ $ ./islcli login
 | --sendGridTo        | sendGridTo           | None                  | SendGrid comma delimited list of email addresses to send output report to. 
 | --sendGridFrom      | sendGridFrom         | None                  | SendGrid from email addresss to send output report from. 
 | --sendGridSubject   | sendGridSubject      | None                  | SendGrid email subject.       
-| --OUTPUT            | OUTPUT               | invoice-analysis.xlsx | Output file name used.        
+| --output            | output               | invoice-analysis.xlsx | Output file name used.        
 | --SL_PRIVATE        |                      | --no_SL_PRIVATE       | Whether to use Public or Private Endpoint. 
 | --type2             |                      | --no_type2            | Specify Type 2 output, if not specified defaults to Type 1 
 | --storage           |                      | --no_storage          | Whether to write additional level of classic Block & File storage analysis to worksheet (default: False) 
@@ -275,7 +275,7 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
    2.2. Select secrets and configmaps  
    2.3. click create, choose config map, and give it a name. Add the following key value pairs    
         ***COS_BUCKET*** = Bucket within COS instance to write report file to.  
-        ***COS_ENDPOINT*** = Public COS Endpoint for bucket to write report file to  
+        ***COS_ENDPOINT*** = Public COS Endpoint (including https://) for bucket to write report file to  
         ***COS_INSTANCE_CRN*** = COS Service Instance CRN in which bucket is located.  
    2.4. Select secrets and configmaps (again)
    2.5.  click create, choose secrets, and give it a name. Add the following key value pairs  
@@ -285,9 +285,19 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
    3.1. Click on the Environment variables tab.   
    3.2. Click add, choose reference to full configmap, and choose configmap created in previous step and click add.  
    3.3. Click add, choose reference to full secret, and choose secrets created in previous step and click add.  
-   3.4 .Click add, choose literal value (click add after each, and repeat)  
-         ***startdate*** = start year & month of invoice analysis in YYYY-MM format  
-         ***enddate*** = end year & month invoice analysis in YYYY-MM format  
-         ***output*** = report filename (including extension of XLSX to be written to COS bucket)  
-4. to Run report click ***Submit job***  
-5. Logging for job can be found from job screen, by clicking Actions, Logging
+   3.4. Click add, choose literal value (click add after each, and repeat)  
+        ***startdate*** = start year & month of invoice analysis in YYYY-MM format  
+        ***enddate*** = end year & month invoice analysis in YYYY-MM format<br>
+        ***months*** = number of months to include for current.<br>
+        ***output*** = report filename (including extension of XLSX to be written to COS bucket)<br>  
+4. Specify Any command line parameters using Command Overrides.<br>
+ 4.1. Click Commmand Overrides<br>
+ 4.2. Under Arguments specify command line in the following format.
+    ```azure
+    python
+    invoiceAnalysis.py
+    --no-detail
+    --no-reconciliation
+    ```
+5. to Run report click ***Submit job***  
+6. Logging for job can be found from job screen, by clicking Actions, Logging
