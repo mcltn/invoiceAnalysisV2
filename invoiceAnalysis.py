@@ -982,8 +982,9 @@ def createType1Report(filename, classicUsage):
         """
         Create additional Summary Usage and Category Detail
         """
-        createCategoryGroup(classicUsage)
-        createCategoryDetail(classicUsage)
+        if summaryFlag:
+            createCategoryGroup(classicUsage)
+            createCategoryDetail(classicUsage)
 
         if cosdetailFlag:
             createClassicCOS(classicUsage)
@@ -1222,8 +1223,9 @@ def createType2Report(filename, classicUsage):
     if detailFlag:
         createDetailTab(classicUsage)
 
-    createInvoiceSummary(classicUsage)
-    createCategoorySummary(classicUsage)
+    if summaryFlag:
+        createInvoiceSummary(classicUsage)
+        createCategoorySummary(classicUsage)
 
     if reconciliationFlag:
         createIaaSInvoiceDetail(classicUsage)
@@ -1328,6 +1330,7 @@ if __name__ == "__main__":
     parser.add_argument('--type2', default=False, action=argparse.BooleanOptionalAction, help="Break out detail by 'D codes' consistent with CFTS Sprint process used for multiple work numbers.")
     parser.add_argument('--storage', default=False, action=argparse.BooleanOptionalAction, help="Include File, BLock and Classic Cloud Object Storage detail analysis.")
     parser.add_argument('--detail', default=True, action=argparse.BooleanOptionalAction, help="Whether to Write detail tabs to worksheet.")
+    parser.add_argument('--summary', default=True, action=argparse.BooleanOptionalAction, help="Whether to Write summarytabs to worksheet.")
     parser.add_argument('--reconciliation', default=True, action=argparse.BooleanOptionalAction, help="Whether to write invoice reconciliation tabs to worksheet.")
     parser.add_argument('--serverdetail', default=True, action=argparse.BooleanOptionalAction, help="Whether to write server detail tabs to worksheet.")
     parser.add_argument('--cosdetail', default=False, action=argparse.BooleanOptionalAction, help="Whether to write Classic OBject Storage tab to worksheet.")
@@ -1338,6 +1341,7 @@ if __name__ == "__main__":
     storageFlag = args.storage
     type2Flag = args.type2
     detailFlag = args.detail
+    summaryFlag = args.summary
     reconciliationFlag = args.reconciliation
     serverDetailFlag = args.serverdetail
     cosdetailFlag =args.cosdetail

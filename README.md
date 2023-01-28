@@ -50,16 +50,16 @@ there are manual billing processes required this can change the format of invoic
 
 **Tabs which are created with range of months displayed as columns in each tab and used for understanding month to month change**
 
-| Tab Name      | Default | flag to change default| Description of Tab 
-|---------------|---------|----------------------|-------------------
-| CategoryGroupSummary | True | none | A pivot table of all charges shown by Invoice Type and Category Groups by month. 
-| CategoryDetail | True  | none | A pivot table of all charges by Invoice Type, Category Group, Category and specific service Detail by month. 
-| Classic_COS_Detail | False | --cos-detail | A table of all Classic Cloud Object Storage Usage (if used)
-| HrlyVirtualServerPivot | True | --no-serverdetail | A table of Hourly Classic VSI's if they exist 
-| MnthlyVirtualServerPivot | True | --no-serverdetail | A table of monthly Classic VSI's if they exist 
-| HrlyBareMetalServerPivot | True | --no-serverdetail | A table of Hourly Bare Metal Servers if they exist 
-| MnthlyBareMetalServerPivot | True | --no-serverdetail | A table of monthly Bare Metal Server if they exist 
-| StoragePivot | False | --storage | A Table of all Block and File Storage allocations by location with custom notes (if used)
+| Tab Name      | Default | flag to change default | Description of Tab 
+|---------------|---------|------------------------|-------------------
+| CategoryGroupSummary | True | --no-summary           | A pivot table of all charges shown by Invoice Type and Category Groups by month. 
+| CategoryDetail | True  | --no-summary           | A pivot table of all charges by Invoice Type, Category Group, Category and specific service Detail by month. 
+| Classic_COS_Detail | False | --cos-detail           | A table of all Classic Cloud Object Storage Usage (if used)
+| HrlyVirtualServerPivot | True | --no-serverdetail      | A table of Hourly Classic VSI's if they exist 
+| MnthlyVirtualServerPivot | True | --no-serverdetail      | A table of monthly Classic VSI's if they exist 
+| HrlyBareMetalServerPivot | True | --no-serverdetail      | A table of Hourly Bare Metal Servers if they exist 
+| MnthlyBareMetalServerPivot | True | --no-serverdetail      | A table of monthly Bare Metal Server if they exist 
+| StoragePivot | False | --storage              | A Table of all Block and File Storage allocations by location with custom notes (if used)
 
 
 Methodology for reconciliation
@@ -87,8 +87,8 @@ detail tab and Virtual and Baremetal pivot tabs to compare month to month change
 
 | Tab Name                | Default | flag to change default | Description of Tab 
 |-------------------------|---------|------------------------|-------------------
-| InvoiceSummary          | True    |                        | is a table of all charges by product group and category for each month by invoice type. This tab can be used to understand changes in month-to-month usage.
-| CategorySummary         | True    |                        | is a table  of all charges by product group, category, and description (for example specific VSI sizes or Bare metal server types) to dig deeper into month to month usage changes.
+| InvoiceSummary          | True    | --no-summary           | is a table of all charges by product group and category for each month by invoice type. This tab can be used to understand changes in month-to-month usage.
+| CategorySummary         | True    | --no-summary           | is a table  of all charges by product group, category, and description (for example specific VSI sizes or Bare metal server types) to dig deeper into month to month usage changes.
 | IaaS_Invoice_Detail     | True    | --no-reconciliation    | is a table of all line items expected to appear on the monthly Infrastructure as a Service invoice as a line item.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
 | Classic_IaaS_combined   | True    | --no-reconciliation    |is a table of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items. 
 | Classic_COS_Detail      | False   | --cosdetail            | is a table of detailed usage from Classic Cloud Object Storage.  Detail is provided for awareness, but will not appear on invoice.
@@ -147,10 +147,11 @@ $ ./islcli login
 | --sendGridTo        | sendGridTo           | None                  | SendGrid comma delimited list of email addresses to send output report to. 
 | --sendGridFrom      | sendGridFrom         | None                  | SendGrid from email addresss to send output report from. 
 | --sendGridSubject   | sendGridSubject      | None                  | SendGrid email subject.       
-| --OUTPUT            | OUTPUT               | invoice-analysis.xlsx | Output file name used.        
+| --output            | output               | invoice-analysis.xlsx | Output file name used.        
 | --SL_PRIVATE        |                      | --no_SL_PRIVATE       | Whether to use Public or Private Endpoint. 
 | --type2             |                      | --no_type2            | Specify Type 2 output, if not specified defaults to Type 1 
 | --storage           |                      | --no_storage          | Whether to write additional level of classic Block & File storage analysis to worksheet (default: False) 
+| --no-summary        |                      | --summary             | Whether to write summary detail tabs to worksheet. (default: True)
 | --no-detail         |                      | --detail              | Whether to Write detail tabs to worksheet. (default: True)
 | --no-reconciliation |                      | --reconciliation      | Whether to write invoice reconciliation tabs to worksheet. (default: True)
 | --no-serverdetail   |                      | --serverdetail        | Whether to write server detail tabs to worksheet (default: True)
@@ -168,28 +169,26 @@ $ export IC_API_KEY=<ibm cloud apikey>
 $ python inboiceAnalysis.py -m 3
 ```
 ```bazaar
-usage: invoiceAnalysis.py [-h] [-k apikey] [-u username] [-p password] [-a account] [-s YYYY-MM] [-e YYYY-MM] [-m MONTHS] [--COS_APIKEY COS_APIKEY] [--COS_ENDPOINT COS_ENDPOINT] [--COS_INSTANCE_CRN COS_INSTANCE_CRN] [--COS_BUCKET COS_BUCKET] [--sendGridApi SENDGRIDAPI] [--sendGridTo SENDGRIDTO]
-                          [--sendGridFrom SENDGRIDFROM] [--sendGridSubject SENDGRIDSUBJECT] [--output OUTPUT] [--SL_PRIVATE | --no-SL_PRIVATE] [--type2 | --no-type2] [--storage | --no-storage] [--detail | --no-detail] [--reconciliation | --no-reconciliation] [--serverdetail | --no-serverdetail]
-                          [--cosdetail | --no-cosdetail]
+usage: invoiceAnalysis.py [-h] [-k IC_API_KEY] [-u username] [-p password] [-a account] [-s STARTDATE] [-e ENDDATE] [--months MONTHS] [--COS_APIKEY COS_APIKEY] [--COS_ENDPOINT COS_ENDPOINT] [--COS_INSTANCE_CRN COS_INSTANCE_CRN] [--COS_BUCKET COS_BUCKET] [--sendGridApi SENDGRIDAPI]
+                          [--sendGridTo SENDGRIDTO] [--sendGridFrom SENDGRIDFROM] [--sendGridSubject SENDGRIDSUBJECT] [--output OUTPUT] [--SL_PRIVATE | --no-SL_PRIVATE] [--type2 | --no-type2] [--storage | --no-storage] [--detail | --no-detail] [--summary | --no-summary]
+                          [--reconciliation | --no-reconciliation] [--serverdetail | --no-serverdetail] [--cosdetail | --no-cosdetail]
 
 Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and corresponding lsPaaS Consumption.
 
 optional arguments:
   -h, --help            show this help message and exit
-  -k apikey, --IC_API_KEY apikey
-                        IBM Cloud API Key
+  -k IC_API_KEY         IBM Cloud API Key
   -u username, --username username
-                        IMS Userid
+                        IBM IMS Userid
   -p password, --password password
-                        IMS Password
+                        IBM IMS Password
   -a account, --account account
                         IMS Account
-  -s YYYY-MM, --startdate YYYY-MM
+  -s STARTDATE, --startdate STARTDATE
                         Start Year & Month in format YYYY-MM
-  -e YYYY-MM, --enddate YYYY-MM
+  -e ENDDATE, --enddate ENDDATE
                         End Year & Month in format YYYY-MM
-  -m MONTHS, --months MONTHS
-                        Number of months including last full month to include in report.
+  --months MONTHS       Number of months including last full month to include in report.
   --COS_APIKEY COS_APIKEY
                         COS apikey to use for Object Storage.
   --COS_ENDPOINT COS_ENDPOINT
@@ -214,6 +213,8 @@ optional arguments:
                         Include File, BLock and Classic Cloud Object Storage detail analysis. (default: False)
   --detail, --no-detail
                         Whether to Write detail tabs to worksheet. (default: True)
+  --summary, --no-summary
+                        Whether to Write summarytabs to worksheet. (default: True)
   --reconciliation, --no-reconciliation
                         Whether to write invoice reconciliation tabs to worksheet. (default: True)
   --serverdetail, --no-serverdetail
@@ -274,7 +275,7 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
    2.2. Select secrets and configmaps  
    2.3. click create, choose config map, and give it a name. Add the following key value pairs    
         ***COS_BUCKET*** = Bucket within COS instance to write report file to.  
-        ***COS_ENDPOINT*** = Public COS Endpoint for bucket to write report file to  
+        ***COS_ENDPOINT*** = Public COS Endpoint (including https://) for bucket to write report file to  
         ***COS_INSTANCE_CRN*** = COS Service Instance CRN in which bucket is located.  
    2.4. Select secrets and configmaps (again)
    2.5.  click create, choose secrets, and give it a name. Add the following key value pairs  
@@ -284,9 +285,19 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
    3.1. Click on the Environment variables tab.   
    3.2. Click add, choose reference to full configmap, and choose configmap created in previous step and click add.  
    3.3. Click add, choose reference to full secret, and choose secrets created in previous step and click add.  
-   3.4 .Click add, choose literal value (click add after each, and repeat)  
-         ***startdate*** = start year & month of invoice analysis in YYYY-MM format  
-         ***enddate*** = end year & month invoice analysis in YYYY-MM format  
-         ***output*** = report filename (including extension of XLSX to be written to COS bucket)  
-4. to Run report click ***Submit job***  
-5. Logging for job can be found from job screen, by clicking Actions, Logging
+   3.4. Click add, choose literal value (click add after each, and repeat)  
+        ***startdate*** = start year & month of invoice analysis in YYYY-MM format  
+        ***enddate*** = end year & month invoice analysis in YYYY-MM format<br>
+        ***months*** = number of months to include for current.<br>
+        ***output*** = report filename (including extension of XLSX to be written to COS bucket)<br>  
+4. Specify Any command line parameters using Command Overrides.<br>
+ 4.1. Click Commmand Overrides<br>
+ 4.2. Under Arguments specify command line in the following format.
+    ```azure
+    python
+    invoiceAnalysis.py
+    --no-detail
+    --no-reconciliation
+    ```
+5. to Run report click ***Submit job***  
+6. Logging for job can be found from job screen, by clicking Actions, Logging
