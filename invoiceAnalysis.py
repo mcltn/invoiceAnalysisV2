@@ -28,7 +28,7 @@ from calendar import monthrange
 from dateutil.relativedelta import relativedelta
 import ibm_boto3
 from ibm_botocore.client import Config, ClientError
-
+from dotenv import load_dotenv
 def setup_logging(default_path='logging.json', default_level=logging.info, env_key='LOG_CFG'):
     # read logging.json for log parameters to be ued by script
     path = default_path
@@ -1001,7 +1001,7 @@ def createType1Report(filename, classicUsage):
         """
         if storageFlag:
             createStorageTab(classicUsage)
-    writer.save()
+    writer.close()
     return
 
 def createType2Report(filename, classicUsage):
@@ -1305,15 +1305,16 @@ def sendEmail(startdate, enddate, sendGridTo, sendGridFrom, sendGridSubject, sen
 
 if __name__ == "__main__":
     setup_logging()
+    load_dotenv()
     parser = argparse.ArgumentParser(
         description="Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and corresponding lsPaaS Consumption.")
-    parser.add_argument("-k", "--IC_API_KEY", default=os.environ.get('IC_API_KEY', None), metavar="apikey", help="IBM Cloud API Key")
-    parser.add_argument("-u", "--username", default=os.environ.get('ims_username', None), metavar="username", help="IMS Userid")
-    parser.add_argument("-p", "--password", default=os.environ.get('ims_password', None), metavar="password", help="IMS Password")
+    parser.add_argument("-k", default=os.environ.get('IC_API_KEY', None), dest="IC_API_KEY", help="IBM Cloud API Key")
+    parser.add_argument("-u", "--username", default=os.environ.get('ims_username', None), metavar="username", help="IBM IMS Userid")
+    parser.add_argument("-p", "--password", default=os.environ.get('ims_password', None), metavar="password", help="IBM IMS Password")
     parser.add_argument("-a", "--account", default=os.environ.get('ims_account', None), metavar="account", help="IMS Account")
-    parser.add_argument("-s", "--startdate", default=os.environ.get('startdate', None), metavar="YYYY-MM", help="Start Year & Month in format YYYY-MM")
-    parser.add_argument("-e", "--enddate", default=os.environ.get('enddate', None), metavar="YYYY-MM", help="End Year & Month in format YYYY-MM")
-    parser.add_argument("-m", "--months", default=os.environ.get('months', None), help="Number of months including last full month to include in report.")
+    parser.add_argument("-s", "--startdate", default=os.environ.get('startdate', None), help="Start Year & Month in format YYYY-MM")
+    parser.add_argument("-e", "--enddate", default=os.environ.get('enddate', None), help="End Year & Month in format YYYY-MM")
+    parser.add_argument("--months", default=os.environ.get('months', 1), help="Number of months including last full month to include in report.")
     parser.add_argument("--COS_APIKEY", default=os.environ.get('COS_APIKEY', None), help="COS apikey to use for Object Storage.")
     parser.add_argument("--COS_ENDPOINT", default=os.environ.get('COS_ENDPOINT', None), help="COS endpoint to use for Object Storage.")
     parser.add_argument("--COS_INSTANCE_CRN", default=os.environ.get('COS_INSTANCE_CRN', None), help="COS Instance CRN to use for file upload.")
@@ -1342,8 +1343,8 @@ if __name__ == "__main__":
     cosdetailFlag =args.cosdetail
 
     """
-    If no APIKEY set, then check for internal credentials
-    NOTE: internal authentication requires internal SDK version.
+    If no APIKEY set, then check for internal IBM credentials
+    NOTE: internal authentication requires internal SDK version & Global Protect VPN.
     """
     if args.IC_API_KEY == None:
         if args.username == None or args.password == None or args.account == None:
@@ -1390,7 +1391,7 @@ if __name__ == "__main__":
             startdate = startdate.strftime("%Y-%m")
     else:
         if args.startdate == None or args.enddate == None:
-            logging.error("You must provide either a number of months (-m) or a start (-s) and end month (-e) in the format of YYYY-MM.")
+            logging.error("You must provide either a number of months (--months) or a start (-s) and end month (-e) in the format of YYYY-MM.")
             quit()
         else:
             startdate = args.startdate
