@@ -1309,7 +1309,7 @@ if __name__ == "__main__":
     setup_logging()
     load_dotenv()
     parser = argparse.ArgumentParser(
-        description="Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and corresponding lsPaaS Consumption.")
+        description="Export usage detail by invoice month to an Excel file for all IBM Cloud Classic invoices and corresponding PaaS Consumption.")
     parser.add_argument("-k", default=os.environ.get('IC_API_KEY', None), dest="IC_API_KEY", help="IBM Cloud API Key")
     parser.add_argument("-u", "--username", default=os.environ.get('ims_username', None), metavar="username", help="IBM IMS Userid")
     parser.add_argument("-p", "--password", default=os.environ.get('ims_password', None), metavar="password", help="IBM IMS Password")
