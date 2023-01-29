@@ -257,46 +257,60 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
 
 ### Setting up IBM Code Engine and building container to run report
 1. Create project, build job and job.  
-   1.1. Open the Code Engine console.  
-   1.2. Select Start creating from Start from source code.  
-   1.3. Select Job  
-   1.4. Enter a name for the job such as invoiceanalysis. Use a name for your job that is unique within the project.  
-   1.5. Select a project from the list of available projects of if this is the first one, create a new one. Note that you must have a selected project to deploy an app.  
-   1.6. Enter the URL for this GitHub repository and click specify build details. Make adjustments if needed to URL and Branch name. Click Next.  
-   1.7. Select Dockerfile for Strategy, Dockerfile for Dockerfile, 10m for Timeout, and Medium for Build resources. Click Next.  
-   1.8. Select a container registry location, such as IBM Registry, Dallas.  
-   1.9. Select Automatic for Registry access.  
-   1.10. Select an existing namespace or enter a name for a new one, for example, newnamespace. 
-   1.11. Enter a name for your image and optionally a tag.  
-   1.12. Click Done.  
-   1.13. Click Create.  
-2. Create configmaps and secrets.  
-   2.1. From project list, choose newly created project.  
-   2.2. Select secrets and configmaps  
-   2.3. click create, choose config map, and give it a name. Add the following key value pairs    
-        ***COS_BUCKET*** = Bucket within COS instance to write report file to.  
-        ***COS_ENDPOINT*** = Public COS Endpoint (including https://) for bucket to write report file to  
-        ***COS_INSTANCE_CRN*** = COS Service Instance CRN in which bucket is located.  
-   2.4. Select secrets and configmaps (again)
-   2.5.  click create, choose secrets, and give it a name. Add the following key value pairs  
-         ***IC_API_KEY*** = an IBM Cloud API Key with Billing access to IBM Cloud Account  
-         ***COS_APIKEY*** = your COS Api Key Id with writter access to appropriate bucket  
+   - Open the Code Engine console.  
+   - Select Start creating from Start from source code.  
+   - Select Job  
+   - Enter a name for the job such as invoiceanalysis. Use a name for your job that is unique within the project.  
+   - Select a project from the list of available projects of if this is the first one, create a new one. Note that you must have a selected project to deploy an app.  
+   - Enter the URL for this GitHub repository and click specify build details. Make adjustments if needed to URL and Branch name. Click Next.  
+   - Select Dockerfile for Strategy, Dockerfile for Dockerfile, 10m for Timeout, and Medium for Build resources. Click Next.  
+   - Select a container registry location, such as IBM Registry, Dallas.  
+   - Select Automatic for Registry access.  
+   - Select an existing namespace or enter a name for a new one, for example, newnamespace. 
+   - Enter a name for your image and optionally a tag.  
+   - Click Done.  
+   - Click Create.  
+2. Create ***configmaps*** and ***secrets***.  
+    - From project list, choose newly created project.  
+    - Select secrets and configmaps  
+    - Click create, choose config map, and give it a name. Add the following key value pairs    
+      - ***COS_BUCKET*** = Bucket within COS instance to write report file to.  
+      - ***COS_ENDPOINT*** = Public COS Endpoint (including https://) for bucket to write report file to  
+      - ***COS_INSTANCE_CRN*** = COS Service Instance CRN in which bucket is located.<br>
+	- Select secrets and configmaps (again)
+    - Click create, choose secrets, and give it a name. Add the following key value pairs
+      - ***IC_API_KEY*** = an IBM Cloud API Key with Billing access to IBM Cloud Account  
+      - ***COS_APIKEY*** = your COS Api Key Id with writter access to appropriate bucket  
 3. Choose the job previously created.  
-   3.1. Click on the Environment variables tab.   
-   3.2. Click add, choose reference to full configmap, and choose configmap created in previous step and click add.  
-   3.3. Click add, choose reference to full secret, and choose secrets created in previous step and click add.  
-   3.4. Click add, choose literal value (click add after each, and repeat)  
-        ***startdate*** = start year & month of invoice analysis in YYYY-MM format  
-        ***enddate*** = end year & month invoice analysis in YYYY-MM format<br>
-        ***months*** = number of months to include for current.<br>
-        ***output*** = report filename (including extension of XLSX to be written to COS bucket)<br>  
+   - Click on the Environment variables tab.   
+   - Click add, choose reference to full configmap, and choose configmap created in previous step and click add.  
+   - Click add, choose reference to full secret, and choose secrets created in previous step and click add.  
+   - Click add, choose literal value (click add after each, and repeat to set required environment variables.)  
+     - ***startdate*** = start year & month of invoice analysis in YYYY-MM format  
+     - ***enddate*** = end year & month invoice analysis in YYYY-MM format<br>
+     - ***months*** = number of months to include for current.<br>
+     - ***output*** = report filename (including extension of XLSX to be written to COS bucket)<br>  
 4. Specify Any command line parameters using Command Overrides.<br>
- 4.1. Click Command Overrides<br>
- 4.2. Under Arguments section specify command line arguments with one per line.
+   - Click Command Overrides<br>
+   - Under Arguments section specify command line arguments with one per line.
     ```azure
     --no-detail
     --no-reconciliation
     --cosdetail
     ```
-5. to Run report click ***Submit job***  
+5. To Run report click ***Submit job***  
+7. To configure the report to run at a specified date and time configure an Event Subscription.
+   - From Project, Choose Event Subscription
+   - Click Create
+   - Choose Event type of Periodic timer
+   - Name subscription; click Next
+   - Select cron pattern or type your own.  
+   - Recommend monthly on the 20th, as this is the SLIC/CFTS cutoff.  The following pattern will run the job at 07 UTC (2am CDT) on the 20th of every month. 
+    ```
+    00 07  20 * *
+    ```
+   - Click Next
+   - Leave Custom event data blank, click Next.
+   - Choose Event Consumer.  Choose Component Type of Job, Choose The Job Name for the job you created in Step 2.   Click Next.
+   - Review configuration Summary; click create.
 6. Logging for job can be found from job screen, by clicking Actions, Logging
