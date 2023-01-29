@@ -141,8 +141,8 @@ $ ./islcli login
 | --months, -m        | months               | None                  | Number of months including last full month to include in report. (use instead of -s/-e) 
 | --COS_APIKEY        | COS_APIKEY           | None                  | COS API to be used to write output file to object storage, if not specified file written locally. 
 | --COS_BUCKET        | COS_BUCKET           | None                  | COS Bucket to be used to write output file to. 
-| --COS_ENDPOINT      | COS_ENDPOINT         | None                  | COS Endpoint to be used to write output file to. 
-| --OS_INSTANCE_CRN   | COS_INSTANCE_CRN     | None                  | COS Instance CRN to be used to write output file to. 
+| --COS_ENDPOINT      | COS_ENDPOINT         | None                  | COS Endpoint (with https://) to be used to write output file to. 
+| --COS_INSTANCE_CRN  | COS_INSTANCE_CRN     | None                  | COS Instance CRN to be used to write output file to. 
 | --sendGridApi       | sendGridApi          | None                  | SendGrid API key to use to send Email. 
 | --sendGridTo        | sendGridTo           | None                  | SendGrid comma delimited list of email addresses to send output report to. 
 | --sendGridFrom      | sendGridFrom         | None                  | SendGrid from email addresss to send output report from. 
@@ -311,6 +311,6 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
     ```
    - Click Next
    - Leave Custom event data blank, click Next.
-   - Choose Event Consumer.  Choose Component Type of Job, Choose The Job Name for the job you created in Step 2.   Click Next.
+   - Choose Event Consumer.  Choose Component Type of Job, Choose The Job Name for the job you created in Step 1.   Click Next.
    - Review configuration Summary; click create.
 6. Logging for job can be found from job screen, by clicking Actions, Logging
