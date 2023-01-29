@@ -51,15 +51,15 @@ there are manual billing processes required this can change the format of invoic
 **Tabs which are created with range of months displayed as columns in each tab and used for understanding month to month change**
 
 | Tab Name      | Default | flag to change default | Description of Tab 
-|---------------|---------|------------------------|-------------------
-| CategoryGroupSummary | True | --no-summary           | A pivot table of all charges shown by Invoice Type and Category Groups by month. 
-| CategoryDetail | True  | --no-summary           | A pivot table of all charges by Invoice Type, Category Group, Category and specific service Detail by month. 
-| Classic_COS_Detail | False | --cos-detail           | A table of all Classic Cloud Object Storage Usage (if used)
-| HrlyVirtualServerPivot | True | --no-serverdetail      | A table of Hourly Classic VSI's if they exist 
-| MnthlyVirtualServerPivot | True | --no-serverdetail      | A table of monthly Classic VSI's if they exist 
-| HrlyBareMetalServerPivot | True | --no-serverdetail      | A table of Hourly Bare Metal Servers if they exist 
-| MnthlyBareMetalServerPivot | True | --no-serverdetail      | A table of monthly Bare Metal Server if they exist 
-| StoragePivot | False | --storage              | A Table of all Block and File Storage allocations by location with custom notes (if used)
+|---------------|---------|-----------------------|-------------------
+| CategoryGroupSummary | True | --no-summary          | A pivot table of all charges shown by Invoice Type and Category Groups by month. 
+| CategoryDetail | True  | --no-summary          | A pivot table of all charges by Invoice Type, Category Group, Category and specific service Detail by month. 
+| Classic_COS_Detail | False | --cosdetail           | A table of all Classic Cloud Object Storage Usage (if used)
+| HrlyVirtualServerPivot | True | --no-serverdetail     | A table of Hourly Classic VSI's if they exist 
+| MnthlyVirtualServerPivot | True | --no-serverdetail     | A table of monthly Classic VSI's if they exist 
+| HrlyBareMetalServerPivot | True | --no-serverdetail     | A table of Hourly Bare Metal Servers if they exist 
+| MnthlyBareMetalServerPivot | True | --no-serverdetail     | A table of monthly Bare Metal Server if they exist 
+| StoragePivot | False | --storage             | A Table of all Block and File Storage allocations by location with custom notes (if used)
 
 
 Methodology for reconciliation
@@ -291,13 +291,12 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
         ***months*** = number of months to include for current.<br>
         ***output*** = report filename (including extension of XLSX to be written to COS bucket)<br>  
 4. Specify Any command line parameters using Command Overrides.<br>
- 4.1. Click Commmand Overrides<br>
- 4.2. Under Arguments specify command line in the following format.
+ 4.1. Click Command Overrides<br>
+ 4.2. Under Arguments section specify command line arguments with one per line.
     ```azure
-    python
-    invoiceAnalysis.py
     --no-detail
     --no-reconciliation
+    --cosdetail
     ```
 5. to Run report click ***Submit job***  
 6. Logging for job can be found from job screen, by clicking Actions, Logging
