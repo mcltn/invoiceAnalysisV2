@@ -102,10 +102,9 @@ detail tab and Virtual and Baremetal pivot tabs to compare month to month change
 | StoragePivot            | False   | --storage              | A Table of all Block and File Storage allocations by location with custom notes (if used)
 
 Methodology for reconciliation
-1. First Look at the IaaS_Invoice_Detail.  These are the line items that should be broken out on the monthly Infrastructure as a Service Invoice.   Items with the same INV_PRODID will appear as one line item.  If correct you should be able to match all but two line items on invoice.
-2. Next look at the Classic_IaaS_combined tab, this is a breakdown of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items.  Detail is provided for awareness, but will not appear on invoice.
-3. Next look at the Classic_COS_Custom tab, this is a breakdown of the custom charges for Classic Object Storage.  On the monthly invoice  This total should match the remaining line item.  Detail is provided for awareness, but will not appear on invoice.
-4. Last look at the Platform_Invoice_Detail tab,  this is a breakdown of all the Platform as a Service charges appearing on the second monthly invoice as "Platform as a Service"   The lines items should match this invoice.  Items with the same INV_PRODID will appear as one line item.
+1. First Look at the IaaS_YYYY-MM.  These are the line items that should be broken out on the monthly Infrastructure as a Service Invoice.   Items with the same INV_PRODID or a Classic Infrastructure will appear as one line item.  If correct you should be able to match all but two line items on invoice.
+2. Next look at the PaaS_YYYY=MM.   These are the PaaS COS line items.    The lines items should match this invoice.  Items with the same INV_PRODID will appear as one line item on the invoice.
+3. Any credits will appear on the Credit-YYYY-MM tab.
 
 ***Caveats***
    - Items with the same INV_PRODID will appear as one line item on the invoice.   For most services this correlates to one usage metric, but several services combine metrics under on INV_PRODID and these will need to be summed on the ***IaaS_Invoice_Detail*** tab manually to match the line item on the invoice.
