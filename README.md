@@ -83,16 +83,22 @@ detail tab and Virtual and Baremetal pivot tabs to compare month to month change
 |---------------|---------|----------------------|-------------------
 | Detail | True | --no-detail | Detailed list of every invoice line item (including chidlren line items) from all invoices types between date range specified.
 
+**Tabs created for each month in range specified and used for reconciliation against invoicese.**
+
+| Tab Name      | Default | flag to change default| Description of Tab 
+|---------------|---------|----------------------|-------------------
+| IaaS_YYYY-MM  | True | --no-reconcilliation | Table matching each portal invoice's IaaS and PaaS Charges. Grouped by Product or INV_PRODID.  These amounts should match the SLIC/CFTS invoice amounts and aid in reconciliation. 
+| PaaS_YYYY-MM  | True | --no-reconcilliation | Table matching portal PaaS COS charges on RECURRING invoice PaaS for that month, which are included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for type1, though the detail is provided at a service level on this tab to faciliate reconcillation.  PaaS charges are for usage 2 months in arrears. 
+| Credit-YYYY-MM |  True | --no-reconcilliation | Table of Credit Invoics to their corresponding IBM SLIC/CFTS invoice(s). 
+
+
 **Tabs which are created with range of months displayed as columns in each tab**
 
 | Tab Name                | Default | flag to change default | Description of Tab 
 |-------------------------|---------|------------------------|-------------------
-| InvoiceSummary          | True    | --no-summary           | is a table of all charges by product group and category for each month by invoice type. This tab can be used to understand changes in month-to-month usage.
-| CategorySummary         | True    | --no-summary           | is a table  of all charges by product group, category, and description (for example specific VSI sizes or Bare metal server types) to dig deeper into month to month usage changes.
-| IaaS_Invoice_Detail     | True    | --no-reconciliation    | is a table of all line items expected to appear on the monthly Infrastructure as a Service invoice as a line item.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
-| Classic_IaaS_combined   | True    | --no-reconciliation    |is a table of all the Classic Infrastructure Charges combined into one line item on the monthly invoice, the total should match one of the two remaining line items. 
+| CategoryGroupSummary    | True    | --no-summary          | A pivot table of all charges shown by Invoice Type and Category Groups by month. 
+| CategoryDetail          | True    | --no-summary          | A pivot table of all charges by Invoice Type, Category Group, Category and specific service Detail by month.
 | Classic_COS_Detail      | False   | --cosdetail            | is a table of detailed usage from Classic Cloud Object Storage.  Detail is provided for awareness, but will not appear on invoice.
-| Platform_Invoice_Detail | True    | --no-reconciliation    | is a table of all the Platform as a Service charges appearing on the  "Platform as a Service" invoice.  (Items with the same INV_PRODID have been grouped together and will appear as one line item and need to be manually summed to match invoice. )
 | StoragePivot            | False   | --storage              | A Table of all Block and File Storage allocations by location with custom notes (if used)
 
 Methodology for reconciliation
