@@ -16,6 +16,8 @@
 import SoftLayer, json, os, argparse, logging, logging.config
 import pandas as pd
 import numpy as np
+from datetime import datetime
+from dotenv import load_dotenv
 
 def setup_logging(default_path='logging.json', default_level=logging.info, env_key='LOG_CFG'):
     # read logging.json for log parameters to be ued by script
@@ -47,11 +49,11 @@ def getinventory():
 
     data = []
     trunkedvlan_data = []
-    limit = 10
+    limit = 20
     offset = 0
 
     while True:
-        hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenter,datacenterName,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
+        hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenter,datacenterName,motherboard,processors,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
                 'backendNetworkComponents.router,backendNetworkComponents.router.primaryIpAddress,backendNetworkComponents.uplinkComponent,frontendNetworkComponentCount,frontendNetworkComponents,frontendNetworkComponents.router,'
                 'frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents,networkGatewayMemberFlag,softwareComponents,frontendNetworkComponents.duplexMode,backendNetworkComponents.duplexMode')
 
@@ -107,6 +109,16 @@ def getinventory():
             else:
                 datacenterName = hardware['datacenterName']
 
+            processor = ""
+            if 'processors' in hardware:
+                if len(hardware["processors"]) > 0:
+                    processor = hardware['processors'][0]['hardwareComponentModel']['longDescription']
+
+            if 'motherboard' in hardware:
+                motherboard = hardware['motherboard']['hardwareComponentModel']['longDescription']
+            else:
+                motherboard = ""
+
             output = {
                 "id": hardware['id'],
                 "fullyQualifiedDomainName": hardware['fullyQualifiedDomainName'],
@@ -114,6 +126,8 @@ def getinventory():
                 "operatingSystem": os,
                 "version": osversion,
                 "datacenterName": datacenterName,
+                "motherboard": motherboard,
+                "processor": processor,
                 "manufacturerSerialNumber": hardware['manufacturerSerialNumber'],
                 "provisionDate": hardware['provisionDate'],
                 "notes": hardware['notes']
@@ -288,6 +302,8 @@ def getinventory():
         "id",
         "networkGatewayMemberFlag",
         "fullyQualifiedDomainName",
+        "motherboard",
+        "processor",
         "operatingSystem",
         "version",
         "datacenterName",
@@ -430,6 +446,61 @@ def createHWDetail(hardware_df):
     worksheet.autofilter(0,0,totalrows,totalcols)
     return
 
+def createProcessorPivot(hardware_df):
+    """
+    Create a Pivot of Servers by Processor type
+    """
+
+    logging.info("Creating Servers by Processor pivot table.")
+    processor = pd.pivot_table(hardware_df, index=["datacenterName", "processor"],
+                               values=["id"],
+                               aggfunc={"id": "nunique"}, margins=True, margins_name="Count", fill_value=0).rename(columns={'id': 'Total Count'})
+    processor.to_excel(writer, 'ProcessorPivot')
+    worksheet = writer.sheets['ProcessorPivot']
+    leftformat = workbook.add_format({'align': 'left'})
+    format1 = workbook.add_format({'num_format': '#,##0'})
+    worksheet.set_column("A:A", 20, leftformat)
+    worksheet.set_column("B:B", 60, leftformat)
+    worksheet.set_column("C:C", 10, format1)
+    return
+def createMotherboardPivot(hardware_df):
+    """
+    Create a Pivot of Servers by Processor type
+    """
+
+    logging.info("Creating Servers by Motherboard pivot table.")
+    processor = pd.pivot_table(hardware_df, index=["datacenterName", "motherboard"],
+                               values=["id"],
+                               aggfunc={"id": "nunique"}, margins=True, margins_name="Count", fill_value=0).rename(columns={'id': 'Total Count'})
+    processor.to_excel(writer, 'MotherboardPivot')
+    worksheet = writer.sheets['MotherboardPivot']
+    leftformat = workbook.add_format({'align': 'left'})
+    format1 = workbook.add_format({'num_format': '#,##0'})
+    worksheet.set_column("A:A", 20, leftformat)
+    worksheet.set_column("B:B", 75, leftformat)
+    worksheet.set_column("C:C", 10, format1)
+    return
+def createHostsByDatePivot(hardware_df):
+    """
+    Create a Pivot of Servers by Processor type
+    """
+
+    logging.info("Creating Provision Month pivot table.")
+    hardware_df["provisionMonth"] = hardware_df.apply(lambda row: getMonth(row), axis=1)
+    processor = pd.pivot_table(hardware_df, index=["provisionMonth", "motherboard", "processor", "operatingSystem"],
+                               values=["id"],
+                               aggfunc={"id": "nunique"},
+                               margins=True, margins_name="Count", fill_value=0).rename(columns={'id': 'Total Count'})
+    processor.to_excel(writer, 'ProvisionMonth')
+    worksheet = writer.sheets['ProvisionMonth']
+    leftformat = workbook.add_format({'align': 'left'})
+    format1 = workbook.add_format({'num_format': '#,##0'})
+    worksheet.set_column("A:A", 15, leftformat)
+    worksheet.set_column("B:B", 75, leftformat)
+    worksheet.set_column("C:D", 50, leftformat)
+    worksheet.set_column("E:E", 10, format1)
+    return
+
 def createVlanDetail(trunkedvlan_df):
     """
     Write detail tab to excel
@@ -476,18 +547,18 @@ def createServersbyOsPivot(hardware_df):
     Create a list of server for each OS
     """
     logging.info("Creating Servers by OS table.")
-    vlanpivot = pd.pivot_table(hardware_df, index=["operatingSystem", "version", "fullyQualifiedDomainName"],
+    vlanpivot = pd.pivot_table(hardware_df, index=["operatingSystem", "version"],
                                values=["id"],
-                               aggfunc={"id": "nunique"}, margins=True, margins_name="Count", fill_value=0).reset_index()
+                               aggfunc={"id": "nunique"}, margins=True, margins_name="Count", fill_value=0).rename(columns={'id': 'Total Count'})
     vlanpivot.to_excel(writer, 'ServerByOSPivot')
     worksheet = writer.sheets['ServerByOSPivot']
     leftformat = workbook.add_format({'align': 'left'})
-    worksheet.set_column("A:A", 10, leftformat)
-    worksheet.set_column("B:B", 30, leftformat)
-    worksheet.set_column("C:C", 30, leftformat)
-    worksheet.set_column("D:D", 60, leftformat)
-    totalrows,totalcols=trunkedvlan_df.shape
-    worksheet.autofilter(0,0,totalrows,totalcols)
+    format1 = workbook.add_format({'num_format': '#,##0'})
+    worksheet.set_column("A:A", 30, leftformat)
+    worksheet.set_column("B:B", 40, leftformat)
+    #worksheet.set_column("C:C", 60, leftformat)
+    worksheet.set_column("C:C", 10, format1)
+    return
 
 def createTaggedVlanbyServersPivot(hardware_df):
     """
@@ -508,9 +579,23 @@ def createTaggedVlanbyServersPivot(hardware_df):
     totalrows,totalcols=trunkedvlan_df.shape
     worksheet.autofilter(0,0,totalrows,totalcols)
 
+def getMonth(row):
+    """
+    Convert dateTime string to DateTime and return month in YYYY-MM format.
+    :param provisionDate:
+    :return:
+    """
+    if row["provisionDate"] != "":
+        provivisionDate = datetime.strptime(row["provisionDate"], "%Y-%m-%dT%H:%M:%S%z")
+        provisionMonth = datetime.strftime(provivisionDate, "%Y-%m")
+    else:
+        provisionMonth = ""
+    return provisionMonth
+
+
 if __name__ == "__main__":
     setup_logging()
-
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Configuration Report prints details of BareMetal Servers such as Network, VLAN, and hardware configuration")
     parser.add_argument("-u", "--username", default=os.environ.get('ims_username', None), metavar="username",
                         help="IMS Userid")
@@ -581,8 +666,11 @@ if __name__ == "__main__":
     createVlanDetail(trunkedvlan_df)
     createServersByTrunkedVlan(trunkedvlan_df)
     createTaggedVlanbyServersPivot(trunkedvlan_df)
+    createProcessorPivot(hardware_df)
+    createMotherboardPivot(hardware_df)
+    createHostsByDatePivot(hardware_df)
     createServersbyOsPivot(hardware_df)
-    writer.save()
+    writer.close()
 
 
 

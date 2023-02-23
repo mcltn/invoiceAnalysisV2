@@ -5,6 +5,7 @@
 ##
 
 import SoftLayer, json, os, argparse, logging, logging.config
+from dotenv import load_dotenv
 
 def setup_logging(default_path='logging.json', default_level=logging.info, env_key='LOG_CFG'):
     # read logging.json for log parameters to be ued by script
@@ -70,6 +71,8 @@ class TablePrinter(object):
 
 
 if __name__ == "__main__":
+
+    load_dotenv()
     ## READ CommandLine Arguments and load configuration file
     parser = argparse.ArgumentParser(description="Configuration Report prints details of BareMetal Servers such as Network, VLAN, and hardware configuration")
     parser.add_argument("-u", "--username", default=os.environ.get('ims_username', None), metavar="username",
@@ -169,7 +172,7 @@ if __name__ == "__main__":
         while True:
             hardwarelist = client['Account'].getHardware(id=ims_account, limit=limit, offset=offset, mask='datacenter,datacenterName,networkVlans,backendRouters,frontendRouters,backendNetworkComponentCount,backendNetworkComponents,'\
                     'backendNetworkComponents.router,backendNetworkComponents.router.primaryIpAddress,backendNetworkComponents.duplexMode,backendNetworkComponents.uplinkComponent,frontendNetworkComponentCount,frontendNetworkComponents,frontendNetworkComponents.router,'
-                    'frontendNetworkComponents.duplexMode,frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents,activeComponents,networkGatewayMemberFlag,softwareComponents')
+                    'frontendNetworkComponents.duplexMode,frontendNetworkComponents.router.primaryIpAddress,frontendNetworkComponents.uplinkComponent,uplinkNetworkComponents,activeComponents,processors,networkGatewayMemberFlag,softwareComponents')
 
             logging.info("Requesting Hardware for account {}, limit={} @ offset {}, returned={}".format(ims_account, limit, offset, len(hardwarelist)))
             if len(hardwarelist) == 0:
@@ -180,6 +183,8 @@ if __name__ == "__main__":
             Extract hardware data from json
             """
             for hardware in hardwarelist:
+                print (hardware)
+                quit()
                 hardwareid = hardware['id']
 
                 # FIND Index for MGMT Interface and get it's ComponentID Number
