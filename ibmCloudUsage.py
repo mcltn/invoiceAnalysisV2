@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # Author: Jon Hall
 # Copyright (c) 2022
@@ -538,15 +539,14 @@ def createClusterTab(instancesUsage):
 
     logging.info("Calculating Clusters.")
     workers = instancesUsage.query('(service_id == "containers-kubernetes")')
-    print (workers)
-    clusters = pd.pivot_table(workers, index=["region", "availability_zone", "instance_name", "plan_name", "metric_name","unit_name"],
-                                    values=["instance_id", "quantity", "cost"],
-                                    aggfunc={"instance_id": "nunique", "quantity": np.sum, "cost": np.sum},
+    clusters = pd.pivot_table(workers, index=["region", "availability_zone", "instance_name", "plan_name", "metric_name", "unit_name"],
+                                    values=["quantity", "cost"],
+                                    aggfunc={"quantity": np.sum, "cost": np.sum},
                                     margins=True, margins_name="Total",
-                                    fill_value=0).rename(columns={'instance_id': 'instance_count'})
+                                    fill_value=0)
 
-    #new_order = ["instance_count", "Cores", "Sockets"]
-    #vcpu = vcpu.reindex(new_order, axis=1)
+    new_order = ["quantity", "cost"]
+    clusters = clusters.reindex(new_order, axis=1)
     clusters.to_excel(writer, 'ClusterDetail')
     worksheet = writer.sheets['ClusterDetail']
     format2 = workbook.add_format({'align': 'left'})
