@@ -266,6 +266,7 @@ def getInstancesUsage(start,end):
             for instance in instances_usage["resources"]:
                 logging.info("Retreiving Instance {} of {} {}".format(recordstart, rows_count, instance["resource_instance_id"]))
                 logging.debug("instance={}".format(instance))
+
                 recordstart = recordstart +1
                 if "pricing_country" in instance:
                     pricing_country = instance["pricing_country"]
@@ -306,6 +307,11 @@ def getInstancesUsage(start,end):
                     "resource_group_name": instance["resource_group_name"],
                     "instance_name": instance["resource_instance_name"]
                 }
+                #if instance["resource_instance_id"] == "crn:v1:bluemix:public:containers-kubernetes:us-east:a/7a24585774d8b3c897d0c9b47ac48461:c8dat9gw0ne7ich8rc8g::":
+                #    print (instance)
+                #    resource_instance = getResourceInstance(instance["resource_instance_id"])
+                #    print(resource_instance)
+                #    quit()
 
                 """
                 Get additional resource instance detail
@@ -359,6 +365,7 @@ def getInstancesUsage(start,end):
                     elif "BMServerProperties" in resource_instance["extensions"]:
                         profile = resource_instance["extensions"]["BMServerProperties"]["Profile"]
                         cpuFamily = ""
+
                     if "Resource" in resource_instance["extensions"]:
                         if "AvailabilityZone" in resource_instance["extensions"]["Resource"]:
                             az = resource_instance["extensions"]["Resource"]["AvailabilityZone"]
@@ -524,6 +531,28 @@ def createMetricSummary(paasUsage):
     worksheet.set_column("I:ZZ", 15, format1)
     return
 
+def createClusterTab(instancesUsage):
+    """
+    Create BM VCPU deployed by role, account, and az
+    """
+
+    logging.info("Calculating Clusters.")
+    workers = instancesUsage.query('(service_id == "containers-kubernetes")')
+    print (workers)
+    clusters = pd.pivot_table(workers, index=["region", "availability_zone", "instance_name", "plan_name", "metric_name","unit_name"],
+                                    values=["instance_id", "quantity", "cost"],
+                                    aggfunc={"instance_id": "nunique", "quantity": np.sum, "cost": np.sum},
+                                    margins=True, margins_name="Total",
+                                    fill_value=0).rename(columns={'instance_id': 'instance_count'})
+
+    #new_order = ["instance_count", "Cores", "Sockets"]
+    #vcpu = vcpu.reindex(new_order, axis=1)
+    clusters.to_excel(writer, 'ClusterDetail')
+    worksheet = writer.sheets['ClusterDetail']
+    format2 = workbook.add_format({'align': 'left'})
+    format3 = workbook.add_format({'num_format': '#,##0'})
+    return
+
 if __name__ == "__main__":
     setup_logging()
     parser = argparse.ArgumentParser(description="Calculate IBM Cloud Usage.")
@@ -567,5 +596,6 @@ if __name__ == "__main__":
     createInstancesDetailTab(instancesUsage)
     createUsageSummaryTab(accountUsage)
     createMetricSummary(accountUsage)
-    writer.save()
+    createClusterTab(instancesUsage)
+    writer.close()
     logging.info("Usage Report is complete.")
