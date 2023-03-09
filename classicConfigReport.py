@@ -183,8 +183,6 @@ if __name__ == "__main__":
             Extract hardware data from json
             """
             for hardware in hardwarelist:
-                print (hardware)
-                quit()
                 hardwareid = hardware['id']
 
                 # FIND Index for MGMT Interface and get it's ComponentID Number
