@@ -1,7 +1,7 @@
 
 #!/usr/bin/env python3
 # Author: Jon Hall
-# Copyright (c) 2022
+# Copyright (c) 2023
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,9 +24,11 @@ from dateutil.relativedelta import *
 from dateutil import tz
 import ibm_boto3
 from ibm_botocore.client import Config, ClientError
-from ibm_platform_services import IamIdentityV1, UsageReportsV4, ResourceControllerV2, GlobalTaggingV1
+from ibm_platform_services import IamIdentityV1, UsageReportsV4, GlobalTaggingV1, GlobalSearchV2
+from ibm_platform_services.resource_controller_v2 import *
 from ibm_cloud_sdk_core import ApiException
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
+from dotenv import load_dotenv
 
 def setup_logging(default_path='logging.json', default_level=logging.info, env_key='LOG_CFG'):
     # read logging.json for log parameters to be ued by script
@@ -58,9 +60,9 @@ def getAccountId(IC_API_KEY):
 
 def createSDK(IC_API_KEY):
     """
-    Create SDK clients
-    """
-    global usage_reports_service, resource_controller_service, global_tagging_service, iam_identity_service
+       Create SDK clients
+       """
+    global usage_reports_service, resource_controller_service, global_tagging_service, iam_identity_service, global_search_service
 
     try:
         authenticator = IAMAuthenticator(IC_API_KEY)
@@ -87,11 +89,72 @@ def createSDK(IC_API_KEY):
         quit()
 
     try:
-      global_tagging_service = GlobalTaggingV1(authenticator=authenticator)
+        global_tagging_service = GlobalTaggingV1(authenticator=authenticator)
     except ApiException as e:
         logging.error("API exception {}.".format(str(e)))
         quit()
 
+    try:
+        global_search_service = GlobalSearchV2(authenticator=authenticator)
+    except ApiException as e:
+        logging.error("API exception {}.".format(str(e)))
+        quit()
+def prePopulateTagCache():
+    """
+    Pre Populate Tagging data into cache
+    """
+    logging.info("Tag Cache being pre-populated with tags.")
+    search_cursor = None
+    items = []
+    while True:
+        response = global_search_service.search(query='tags:*',
+                                                search_cursor=search_cursor,
+                                                fields=["tags"],
+                                                limit=1000)
+        scan_result = response.get_result()
+
+        items = items + scan_result["items"]
+        if "search_cursor" not in scan_result:
+            break
+        else:
+            search_cursor = scan_result["search_cursor"]
+
+    tag_cache = {}
+    for resource in items:
+        resourceId = resource["crn"]
+
+        tag_cache[resourceId] = resource["tags"]
+
+    return tag_cache
+def prePopulateResourceCache():
+    """
+    Retrieve all Resources for account from resource controller and pre-populate cache
+    """
+    logging.info("Resource_cache being pre-populated with active resources in account.")
+    all_results = []
+    pager = ResourceInstancesPager(
+        client=resource_controller_service,
+        limit=50
+    )
+
+    try:
+        while pager.has_next():
+            next_page = pager.get_next()
+            assert next_page is not None
+            all_results.extend(next_page)
+        logging.debug("resource_instance={}".format(all_results))
+    except ApiException as e:
+        logging.error(
+            "API Error.  Can not retrieve instances of type {} {}: {}".format(resource_type, str(e.code),
+                                                                              e.message))
+        quit()
+
+    resource_cache = {}
+    for resource in all_results:
+        resourceId = resource["crn"]
+        resource_cache[resourceId] = resource
+
+    return resource_cache
 def getAccountUsage(start, end):
     """
     Get IBM Cloud Service from account for range of months.
@@ -159,7 +222,6 @@ def getAccountUsage(start, end):
                     'rateable_quantity','cost', 'rated_cost', 'discount', 'price'])
 
     return accountUsage
-
 def getInstancesUsage(start,end):
     """
     Get instances resource usage for month of specific resource_id
@@ -192,60 +254,18 @@ def getInstancesUsage(start,end):
             resource_cache[resourceId] = getResourceInstancefromCloud(resourceId)
         return resource_cache[resourceId]
 
-    def getTagsfromCloud(resourceId):
-        """
-                   Using GlobalTagging Service to check for role tag associated with resourceId
-        """
-        success = False
-        tagtry = 0
-        while success != True:
-            try:
-                tags = global_tagging_service.list_tags(attached_to=resourceId,
-                                                        timeout=9000).get_result()
-                success = True
-            except ApiException as e:
-                if e.code == 400:
-                    logging.warning("Continuing without tags, Get tags failed for instance {} {}: {}".format(resourceId, str(e.code), e.message))
-                    tags = {"total_count": 0}
-                    success = True
-                elif e.code == 404 or e.code == 429:
-                    if tagtry == 5:
-                        logging.error("Quiting due to too many attempts,  Instance {} {} : {}".format(resourceId, str(e.code), e.message))
-                        quit()
-                    else:
-                        logging.warning("Retrying Instance {} {} : {}".format(resourceId, str(e.code), e.message))
-                        success = False
-                        time.sleep(5)
-                        tagtry =+ 1
-                elif e.code == 401:
-                    logging.error("Quitting, API Key not authorized to lookup tags {} : {}".format(str(e.code), e.message))
-                    quit()
-                elif e.code == 500:
-                    logging.error("Quitting, Get tags failed with Internal Server area attached_to={} {}:{} ".format(
-                        resourceId, str(e.code), e.message))
-                    quit()
-                elif e.code == 480:
-                    logging.warning("Continuing without tags, Get tags failed for instance {} {}: {}".format(resourceId, str(e.code), e.message))
-                    tags = {"total_count": 0}
-                    success = True
-                else:
-                    logging.error("Quitting, Get tags failed with other status code {} : {} ".format(str(e.code),e.message))
-                    quit()
-
-        return tags
-
     def getTags(resourceId):
         """
-        Check Cache for Resource tags which may have been retrieved previously
+        Check Tag Cache for Resource
         """
         if resourceId not in tag_cache:
             logging.debug("Cache miss for Tag {}".format(resourceId))
-            tag_cache[resourceId] = getTagsfromCloud(resourceId)
-        return tag_cache[resourceId]
+            tags = []
+        else:
+            tags = tag_cache[resourceId]
+        return tags
 
     data = []
-    resource_cache = {}
-    tag_cache = {}
     limit = 100  ## set limit of record returned
 
     while start <= end:
@@ -308,11 +328,6 @@ def getInstancesUsage(start,end):
                     "resource_group_name": instance["resource_group_name"],
                     "instance_name": instance["resource_instance_name"]
                 }
-                #if instance["resource_instance_id"] == "crn:v1:bluemix:public:containers-kubernetes:us-east:a/7a24585774d8b3c897d0c9b47ac48461:c8dat9gw0ne7ich8rc8g::":
-                #    print (instance)
-                #    resource_instance = getResourceInstance(instance["resource_instance_id"])
-                #    print(resource_instance)
-                #    quit()
 
                 """
                 Get additional resource instance detail
@@ -340,6 +355,23 @@ def getInstancesUsage(start,end):
                     state = resource_instance["state"]
                 else:
                     state = ""
+
+                if "type" in resource_instance:
+                    type = resource_instance["type"]
+                else:
+                    type = ""
+
+                roks_cluster_id = ""
+                roks_cluster_name = ""
+                if type == "container_instance":
+                    if instance["plan_id"] == "containers.kubernetes.cluster.roks":
+                        """ This is the instance of the ROKS Cluster"""
+                        roks_cluster_id = instance["resource_instance_name"]
+                        roks_cluster_name =  instance["resource_instance_name"]
+                    elif instance["plan_id"] == "containers.kubernetes.vpc.gen2.roks":
+                        """ This is a worker instance """
+                        roks_cluster_id = instance["resource_instance_name"][0:instance["resource_instance_name"].find('_')]
+                        roks_cluster_name = instance["resource_instance_name"][0:instance["resource_instance_name"].find('_')]
 
                 """
                 For VPC Virtual Servers obtain intended profile and virtual server details
@@ -374,18 +406,20 @@ def getInstancesUsage(start,end):
                 # get tags attached to instance from cache or resource controller
                 tags = getTags(instance["resource_instance_id"])
 
-                # parse role tag
-                role = ""
-                if tags["total_count"] > 0:
-                    for tag in tags["items"]:
-                        if tag["name"].find("role:") != -1:
-                            role = tag["name"].split(":")[1]
+                # parse role tag into comma delimited list
+                if len(tags) > 0:
+                    role = ",".join([str(item.split(":")[1]) for item in tags if "role:" in item])
+                else:
+                    role = ""
 
                 row_addition = {
                     "instance_created_at": created_at,
                     "instance_updated_at": updated_at,
                     "instance_deleted_at": deleted_at,
                     "instance_state": state,
+                    "type": type,
+                    "roks_cluster_id": roks_cluster_id,
+                    "roks_cluster_name": roks_cluster_name,
                     "instance_profile": profile,
                     "cpu_family": cpuFamily,
                     "numberOfVirtualCPUs": numberOfVirtualCPUs,
@@ -450,7 +484,7 @@ def getInstancesUsage(start,end):
 
         instancesUsage = pd.DataFrame(data, columns=['account_id', "month", "service_name", "service_id", "instance_name","instance_id", "plan_name", "plan_id", "region", "pricing_region",
                                                  "resource_group_name","resource_group_id", "billable", "pricing_country", "billing_country", "currency_code", "pricing_plan_id",
-                                                 "instance_created_at", "instance_updated_at", "instance_deleted_at", "instance_state", "instance_profile", "cpu_family",
+                                                 "instance_created_at", "instance_updated_at", "instance_deleted_at", "instance_state", "type", "roks_cluster_id", "roks_cluster_name", "instance_profile", "cpu_family",
                                                  "numberOfVirtualCPUs", "MemorySizeMiB", "NodeName", "NumberOfGPUs", "NumberOfInstStorageDisks", "availability_zone",
                                                  "instance_role", "metric", "metric_name", "unit", "unit_name", "quantity", "cost", "rated_cost", "rateable_quantity", "estimated_days", "price", "discount"])
 
@@ -539,22 +573,31 @@ def createClusterTab(instancesUsage):
 
     logging.info("Calculating Clusters.")
     workers = instancesUsage.query('(service_id == "containers-kubernetes")')
-    clusters = pd.pivot_table(workers, index=["region", "availability_zone", "instance_name", "plan_name", "metric_name", "unit_name"],
+    clusters = pd.pivot_table(workers, index=["region",  "roks_cluster_id", "roks_cluster_name", "instance_name", "plan_name", "metric_name", "unit_name"],
+                                    columns=["month"],
                                     values=["quantity", "cost"],
                                     aggfunc={"quantity": np.sum, "cost": np.sum},
                                     margins=True, margins_name="Total",
                                     fill_value=0)
 
     new_order = ["quantity", "cost"]
-    clusters = clusters.reindex(new_order, axis=1)
+    clusters = clusters.reindex(new_order, axis=1, level=0)
     clusters.to_excel(writer, 'ClusterDetail')
     worksheet = writer.sheets['ClusterDetail']
     format2 = workbook.add_format({'align': 'left'})
+    format1 = workbook.add_format({'num_format': '$#,##0.00'})
     format3 = workbook.add_format({'num_format': '#,##0'})
+    worksheet.set_column("A:A", 30, format2)
+    worksheet.set_column("B:B", 40, format2)
+    worksheet.set_column("C:C", 40, format2)
+    worksheet.set_column("D:D", 70, format2)
+    worksheet.set_column("E:G", 50, format3)
+
     return
 
 if __name__ == "__main__":
     setup_logging()
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Calculate IBM Cloud Usage.")
     parser.add_argument("--apikey", default=os.environ.get('IC_API_KEY', None), metavar="apikey", help="IBM Cloud API Key")
     parser.add_argument("--output", default=os.environ.get('output', 'ibmCloudUsage.xlsx'), help="Filename Excel output file. (including extension of .xlsx)")
@@ -579,6 +622,13 @@ if __name__ == "__main__":
             accountUsage = pd.DataFrame()
             createSDK(apikey)
             accountId = getAccountId(apikey)
+            logging.info("Retrieving Usage and Instance data from AccountId: {}.".format(accountId))
+            """
+            Pre-populate Account Data to accelerate report generation
+            """
+            tag_cache = prePopulateTagCache()
+            resource_cache = prePopulateResourceCache()
+
             logging.info("Retrieving Usage and Instance data from AccountId: {}.".format(accountId))
 
             # Get Usage Data via API
