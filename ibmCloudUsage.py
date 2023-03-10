@@ -160,7 +160,6 @@ def getAccountUsage(start, end):
     Get IBM Cloud Service from account for range of months.
     Note: This usage will bill two months later for SLIC.  For example April Usage, will invoice on the end of June CFTS invoice.
     """
-
     data = []
     while start <= end:
         usageMonth = start.strftime("%Y-%m")
@@ -268,27 +267,28 @@ def getInstancesUsage(start,end):
     data = []
     limit = 100  ## set limit of record returned
 
+    """ Loop through months """
     while start <= end:
         usageMonth = start.strftime("%Y-%m")
         logging.info("Retrieving Instances Usage from {}.".format(usageMonth))
         start += relativedelta(months=+1)
-        recordstart = 1
+        record = 0
         instances_usage = usage_reports_service.get_resource_usage_account(
             account_id=accountId,
             billingmonth=usageMonth, names=True, limit=limit).get_result()
-        logging.info("Requesting Instance Usage: Start {}, Limit={}, Count={}".format(recordstart, limit, instances_usage["count"]))
+
         if "next" in instances_usage:
             nextoffset = instances_usage["next"]["offset"]
         else:
             nextoffset = ""
+
         rows_count = instances_usage["count"]
 
-        while rows_count > recordstart:
+        while True:
             for instance in instances_usage["resources"]:
-                logging.info("Retreiving Instance {} of {} {}".format(recordstart, rows_count, instance["resource_instance_id"]))
+                record = record + 1
+                logging.info("{} Retrieving Instance {} of {} {}".format(usageMonth, record, rows_count, instance["resource_instance_id"]))
                 logging.debug("instance={}".format(instance))
-
-                recordstart = recordstart +1
                 if "pricing_country" in instance:
                     pricing_country = instance["pricing_country"]
                 else:
@@ -446,12 +446,6 @@ def getInstancesUsage(start,end):
                     metric_name = usage["metric_name"]
                     unit_name = usage["unit_name"]
 
-                    # For servers estimate days of usage
-                    if (instance["resource_name"] == "Virtual Server for VPC" or instance["resource_name"] == "Bare Metal Servers for VPC") and unit.find("HOUR") != -1:
-                        estimated_days = np.ceil(float(quantity)/24)
-                    else:
-                        estimated_days = ""
-
                     row_addition = {
                         "metric": metric,
                         "unit": unit,
@@ -463,30 +457,34 @@ def getInstancesUsage(start,end):
                         "discount": discount,
                         "metric_name": metric_name,
                         'unit_name': unit_name,
-                        'estimated_days': estimated_days
                     }
 
                     row = row | row_addition
 
                     data.append(row.copy())
 
-            instances_usage = usage_reports_service.get_resource_usage_account(
-                account_id=accountId,
-                billingmonth=usageMonth, names=True,limit=limit, start=nextoffset).get_result()
-            if "next" in instances_usage:
-                nextoffset = instances_usage["next"]["offset"]
+            if nextoffset == "":
+                """ No more records break out of loop """
+                break
             else:
-                nextoffset = ""
+                """ get more """
+                instances_usage = usage_reports_service.get_resource_usage_account(
+                    account_id=accountId,
+                    billingmonth=usageMonth, names=True,limit=limit, start=nextoffset).get_result()
+                if "next" in instances_usage:
+                    nextoffset = instances_usage["next"]["offset"]
+                else:
+                    nextoffset = ""
 
             logging.debug("instance_usage {}={}".format(usageMonth, instances_usage))
-            logging.info("Start {}, Limit={}, Count={}".format(recordstart, instances_usage["limit"], instances_usage["count"]))
+            #logging.info("Requesting Instance Usage: Start {}, Limit={}, Count={}".format(record, instances_usage["limit"], instances_usage["count"]))
 
 
         instancesUsage = pd.DataFrame(data, columns=['account_id', "month", "service_name", "service_id", "instance_name","instance_id", "plan_name", "plan_id", "region", "pricing_region",
                                                  "resource_group_name","resource_group_id", "billable", "pricing_country", "billing_country", "currency_code", "pricing_plan_id",
                                                  "instance_created_at", "instance_updated_at", "instance_deleted_at", "instance_state", "type", "roks_cluster_id", "roks_cluster_name", "instance_profile", "cpu_family",
                                                  "numberOfVirtualCPUs", "MemorySizeMiB", "NodeName", "NumberOfGPUs", "NumberOfInstStorageDisks", "availability_zone",
-                                                 "instance_role", "metric", "metric_name", "unit", "unit_name", "quantity", "cost", "rated_cost", "rateable_quantity", "estimated_days", "price", "discount"])
+                                                 "instance_role", "metric", "metric_name", "unit", "unit_name", "quantity", "cost", "rated_cost", "rateable_quantity", "price", "discount"])
 
     return instancesUsage
 
@@ -561,38 +559,40 @@ def createMetricSummary(paasUsage):
     worksheet.set_column("A:A", 30, format2)
     worksheet.set_column("B:B", 40, format2)
     worksheet.set_column("C:C", 40, format2)
-    worksheet.set_column("D:D", 40, format2)
-    worksheet.set_column("E:H", 30, format3)
-    worksheet.set_column("I:ZZ", 15, format1)
+    months = len(paasUsage.month.unique())
+    worksheet.set_column(3, 3 + months, 18, format3)
+    worksheet.set_column(4 + months, 4 + (months * 2), 18, format1)
     return
 
 def createClusterTab(instancesUsage):
     """
-    Create BM VCPU deployed by role, account, and az
+    Create Pivot table for ROKS Clusters
     """
 
-    logging.info("Calculating Clusters.")
-    workers = instancesUsage.query('(service_id == "containers-kubernetes")')
-    clusters = pd.pivot_table(workers, index=["region",  "roks_cluster_id", "roks_cluster_name", "instance_name", "plan_name", "metric_name", "unit_name"],
-                                    columns=["month"],
-                                    values=["quantity", "cost"],
-                                    aggfunc={"quantity": np.sum, "cost": np.sum},
-                                    margins=True, margins_name="Total",
-                                    fill_value=0)
+    workers = instancesUsage.query('(service_id == "containers-kubernetes" and plan_id == "containers.kubernetes.vpc.gen2.roks")')
+    if len(workers) > 0:
+        logging.info("Creating Cluster Pivot Tab.")
+        clusters = pd.pivot_table(workers, index=["region",  "roks_cluster_id", "instance_name", "plan_name", "metric_name", "unit_name"],
+                                        columns=["month"],
+                                        values=["quantity", "cost"],
+                                        aggfunc={"quantity": np.sum, "cost": np.sum},
+                                        fill_value=0)
 
-    new_order = ["quantity", "cost"]
-    clusters = clusters.reindex(new_order, axis=1, level=0)
-    clusters.to_excel(writer, 'ClusterDetail')
-    worksheet = writer.sheets['ClusterDetail']
-    format2 = workbook.add_format({'align': 'left'})
-    format1 = workbook.add_format({'num_format': '$#,##0.00'})
-    format3 = workbook.add_format({'num_format': '#,##0'})
-    worksheet.set_column("A:A", 30, format2)
-    worksheet.set_column("B:B", 40, format2)
-    worksheet.set_column("C:C", 40, format2)
-    worksheet.set_column("D:D", 70, format2)
-    worksheet.set_column("E:G", 50, format3)
-
+        new_order = ["quantity", "cost"]
+        clusters = clusters.reindex(new_order, axis=1, level=0)
+        clusters.to_excel(writer, 'ClusterDetail')
+        worksheet = writer.sheets['ClusterDetail']
+        format2 = workbook.add_format({'align': 'left'})
+        format1 = workbook.add_format({'num_format': '$#,##0.00'})
+        format3 = workbook.add_format({'num_format': '#,##0'})
+        worksheet.set_column("A:A", 18, format2)
+        worksheet.set_column("B:B", 30, format2)
+        worksheet.set_column("C:C", 70, format2)
+        worksheet.set_column("D:D", 50, format3)
+        worksheet.set_column("E:F", 25, format3)
+        months = len(workers.month.unique())
+        worksheet.set_column(6, 5 + months, 10, format3)
+        worksheet.set_column(6 + months, 6 + (months * 2), 12, format1)
     return
 
 if __name__ == "__main__":
