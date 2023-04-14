@@ -646,6 +646,6 @@ if __name__ == "__main__":
     createInstancesDetailTab(instancesUsage)
     createUsageSummaryTab(accountUsage)
     createMetricSummary(accountUsage)
-    createClusterTab(instancesUsage)
+    #createClusterTab(instancesUsage)
     writer.close()
     logging.info("Usage Report is complete.")
