@@ -135,32 +135,32 @@ $ ./islcli login
 ```
 3. Set environment variables which can be used.  IBM COS only required if file needs to be written to COS, otherwise file will be written locally.
 
-| Parameter           | Environment Variable | Default               | Description                   
-|---------------------|----------------------|-----------------------|-------------------------------
-| --IC_API_KEY, -k    | IC_API_KEY           | None                  | IBM Cloud API Key to be used to retrieve invoices and usage. 
-| --username          | ims_username         | None                  | Required only if using internal authorization (used instead of IC_API_KEY) 
-| --password          | ims_password         | None                  | Required only if using internal authorization (used instead of IC_API_KEY) 
-| --account           | ims_account          | None                  | Required only if using internal authorization to specify IMS account to pull. 
-| --STARTDATE, -s     | startdate            | None                  | Start Month in YYYY-MM format 
-| --ENDDATE, -e       | enddate              | None                  | End Month in YYYY-MM format   
-| --months, -m        | months               | None                  | Number of months including last full month to include in report. (use instead of -s/-e) 
-| --COS_APIKEY        | COS_APIKEY           | None                  | COS API to be used to write output file to object storage, if not specified file written locally. 
-| --COS_BUCKET        | COS_BUCKET           | None                  | COS Bucket to be used to write output file to. 
-| --COS_ENDPOINT      | COS_ENDPOINT         | None                  | COS Endpoint (with https://) to be used to write output file to. 
-| --COS_INSTANCE_CRN  | COS_INSTANCE_CRN     | None                  | COS Instance CRN to be used to write output file to. 
-| --sendGridApi       | sendGridApi          | None                  | SendGrid API key to use to send Email. 
-| --sendGridTo        | sendGridTo           | None                  | SendGrid comma delimited list of email addresses to send output report to. 
-| --sendGridFrom      | sendGridFrom         | None                  | SendGrid from email addresss to send output report from. 
-| --sendGridSubject   | sendGridSubject      | None                  | SendGrid email subject.       
-| --output            | output               | invoice-analysis.xlsx | Output file name used.        
-| --SL_PRIVATE        |                      | --no_SL_PRIVATE       | Whether to use Public or Private Endpoint. 
-| --type2             |                      | --no_type2            | Specify Type 2 output, if not specified defaults to Type 1 
-| --storage           |                      | --no_storage          | Whether to write additional level of classic Block & File storage analysis to worksheet (default: False) 
-| --no-summary        |                      | --summary             | Whether to write summary detail tabs to worksheet. (default: True)
-| --no-detail         |                      | --detail              | Whether to Write detail tabs to worksheet. (default: True)
+| Parameter      | Environment Variable | Default               | Description                   
+|----------------|----------------------|-----------------------|-------------------------------
+| --IC_API_KEY, -k | IC_API_KEY           | None                  | IBM Cloud API Key to be used to retrieve invoices and usage. 
+| --username     | ims_username         | None                  | Required only if using internal authorization (used instead of IC_API_KEY) 
+| --password     | ims_password         | None                  | Required only if using internal authorization (used instead of IC_API_KEY) 
+| --account      | ims_account          | None                  | Required only if using internal authorization to specify IMS account to pull. 
+| --STARTDATE, -s | startdate            | None                  | Start Month in YYYY-MM format 
+| --ENDDATE, -e  | enddate              | None                  | End Month in YYYY-MM format   
+| --months       | months               | 1                     | Number of months including last full month to include in report. (use instead of -s/-e) 
+| --COS_APIKEY   | COS_APIKEY           | None                  | COS API to be used to write output file to object storage, if not specified file written locally. 
+| --COS_BUCKET   | COS_BUCKET           | None                  | COS Bucket to be used to write output file to. 
+| --COS_ENDPOINT | COS_ENDPOINT         | None                  | COS Endpoint (with https://) to be used to write output file to. 
+| --COS_INSTANCE_CRN | COS_INSTANCE_CRN     | None                  | COS Instance CRN to be used to write output file to. 
+| --sendGridApi  | sendGridApi          | None                  | SendGrid API key to use to send Email. 
+| --sendGridTo   | sendGridTo           | None                  | SendGrid comma delimited list of email addresses to send output report to. 
+| --sendGridFrom | sendGridFrom         | None                  | SendGrid from email addresss to send output report from. 
+| --sendGridSubject | sendGridSubject      | None                  | SendGrid email subject.       
+| --output       | output               | invoice-analysis.xlsx | Output file name used.        
+| --SL_PRIVATE   |                      | --no_SL_PRIVATE       | Whether to use Public or Private Endpoint. 
+| --type2        |                      | --no_type2            | Specify Type 2 output, if not specified defaults to Type 1 
+| --storage      |                      | --no_storage          | Whether to write additional level of classic Block & File storage analysis to worksheet (default: False) 
+| --no-summary   |                      | --summary             | Whether to write summary detail tabs to worksheet. (default: True)
+| --no-detail    |                      | --detail              | Whether to Write detail tabs to worksheet. (default: True)
 | --no-reconciliation |                      | --reconciliation      | Whether to write invoice reconciliation tabs to worksheet. (default: True)
-| --no-serverdetail   |                      | --serverdetail        | Whether to write server detail tabs to worksheet (default: True)
-| --cosdetail         |                      | --no-cosdetail        | Whether to write Classic OBject Storage tab to worksheet (default: False)
+| --no-serverdetail |                      | --serverdetail        | Whether to write server detail tabs to worksheet (default: True)
+| --cosdetail    |                      | --no-cosdetail        | Whether to write Classic OBject Storage tab to worksheet (default: False)
 
 3. Run Python script (Python 3.9+ required).</br>
 To analyze invoices between two months.
@@ -293,14 +293,15 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
    - Click add, choose literal value (click add after each, and repeat to set required environment variables.)  
      - ***startdate*** = start year & month of invoice analysis in YYYY-MM format  
      - ***enddate*** = end year & month invoice analysis in YYYY-MM format<br>
-     - ***months*** = number of months to include for current.<br>
+     - ***months*** = number of months to include if more than 1.<br>
      - ***output*** = report filename (including extension of XLSX to be written to COS bucket)<br>  
 4. Specify Any command line parameters using Command Overrides.<br>
    - Click Command Overrides<br>
    - Under Arguments section specify command line arguments with one per line.
     ```azure
     --no-detail
-    --no-reconciliation
+    --storage
+    --no-reconcilliation
     --cosdetail
     ```
 5. To Run report click ***Submit job***  

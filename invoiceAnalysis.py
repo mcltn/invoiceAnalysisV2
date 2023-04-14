@@ -1376,7 +1376,7 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--enddate", default=os.environ.get('enddate', None), help="End Year & Month in format YYYY-MM")
     parser.add_argument("--load", action=argparse.BooleanOptionalAction, help="Load dataframes from pkl files for test purposes.")
     parser.add_argument("--save", action=argparse.BooleanOptionalAction, help="Store dataframes to pkl files for test purposes.")
-    parser.add_argument("--months", default=os.environ.get('months', None), help="Number of months including last full month to include in report.")
+    parser.add_argument("--months", default=os.environ.get('months', 1), help="Number of months including last full month to include in report.")
     parser.add_argument("--COS_APIKEY", default=os.environ.get('COS_APIKEY', None), help="COS apikey to use for Object Storage.")
     parser.add_argument("--COS_ENDPOINT", default=os.environ.get('COS_ENDPOINT', None), help="COS endpoint to use for Object Storage.")
     parser.add_argument("--COS_INSTANCE_CRN", default=os.environ.get('COS_INSTANCE_CRN', None), help="COS Instance CRN to use for file upload.")
