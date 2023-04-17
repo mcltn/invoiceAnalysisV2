@@ -258,11 +258,15 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
    - ***PaaS_Metric_Summary*** is a pivot table showing the month to date usage and cost for each metric for each service instance and plan.
 
 
-## Running IBM Cloud Classic Infrastructure Invoice Analysis Report as a Code Engine Job (CloudAPIKey required)
+## Running Invoice Analysis Report as a Code Engine Job.
+Requirements
+* Creation of an Object Storage Bucket to store the script output in at execution time. 
+* Creation of an IBM Cloud Object Storage Service API Key with read/write access to bucket above
+* Creation of an IBM Cloud API Key with Billing Service (View access))
 
-### Setting up IBM Code Engine and building container to run report
-1. Create project, build job and job.  
-   - Open the Code Engine console.  
+### Setting up IBM Code Engine to run report from IBM Cloud Portal
+1. Open IBM Cloud Code Engine Console from IBM Cloud Portal (left Navigation)
+2. Create project, build job and job.
    - Select Start creating from Start from source code.  
    - Select Job  
    - Enter a name for the job such as invoiceanalysis. Use a name for your job that is unique within the project.  
@@ -285,27 +289,22 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
 	- Select secrets and configmaps (again)
     - Click create, choose secrets, and give it a name. Add the following key value pairs
       - ***IC_API_KEY*** = an IBM Cloud API Key with Billing access to IBM Cloud Account  
-      - ***COS_APIKEY*** = your COS Api Key Id with writter access to appropriate bucket  
+      - ***COS_APIKEY*** = your COS Api Key with writter access to appropriate bucket  
 3. Choose the job previously created.  
    - Click on the Environment variables tab.   
    - Click add, choose reference to full configmap, and choose configmap created in previous step and click add.  
    - Click add, choose reference to full secret, and choose secrets created in previous step and click add.  
-   - Click add, choose literal value (click add after each, and repeat to set required environment variables.)  
-     - ***startdate*** = start year & month of invoice analysis in YYYY-MM format  
-     - ***enddate*** = end year & month invoice analysis in YYYY-MM format<br>
+   - Click add, choose literal value (click add after each, and repeat to set required environment variables.)
      - ***months*** = number of months to include if more than 1.<br>
      - ***output*** = report filename (including extension of XLSX to be written to COS bucket)<br>  
 4. Specify Any command line parameters using Command Overrides.<br>
-   - Click Command Overrides<br>
+   - Click Command Overrides (see tables above) <br>
    - Under Arguments section specify command line arguments with one per line.
     ```azure
     --no-detail
-    --storage
     --no-reconcilliation
-    --cosdetail
     ```
-5. To Run report click ***Submit job***  
-7. To configure the report to run at a specified date and time configure an Event Subscription.
+5. To configure the report to run at a specified date and time configure an Event Subscription.
    - From Project, Choose Event Subscription
    - Click Create
    - Choose Event type of Periodic timer
@@ -319,4 +318,5 @@ invoice.  Other words the USAGE charges are generally list price, but eppear on 
    - Leave Custom event data blank, click Next.
    - Choose Event Consumer.  Choose Component Type of Job, Choose The Job Name for the job you created in Step 1.   Click Next.
    - Review configuration Summary; click create.
-6. Logging for job can be found from job screen, by clicking Actions, Logging
+6. To Run report "On Demand" click ***Submit job***
+7. Logging for job can be found from job screen, by clicking Actions, Logging

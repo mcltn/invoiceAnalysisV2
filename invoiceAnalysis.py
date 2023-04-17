@@ -89,7 +89,7 @@ def getInvoiceList(startdate, enddate):
     logging.debug("invoiceList startDate: {}".format(startdate.astimezone(dallas).strftime("%m/%d/%Y %H:%M:%S")))
     logging.debug("invoiceList endDate: {}".format(enddate.astimezone(dallas).strftime("%m/%d/%Y %H:%M:%S")))
     try:
-        invoiceList = client['Account'].getInvoices(id=ims_account, mask='id,createDate,typeCode,invoiceTotalAmount,invoiceTotalRecurringAmount,invoiceTopLevelItemCount', filter={
+        invoiceList = client['Account'].getInvoices(id=ims_account, mask='id,accountId,createDate,typeCode,invoiceTotalAmount,invoiceTotalRecurringAmount,invoiceTopLevelItemCount', filter={
                 'invoices': {
                     'createDate': {
                         'operation': 'betweenDate',
@@ -104,6 +104,7 @@ def getInvoiceList(startdate, enddate):
         logging.error("Account::getInvoices: %s, %s" % (e.faultCode, e.faultString))
         quit()
     logging.debug("getInvoiceList account {}: {}".format(ims_account,invoiceList))
+    logging.info("IBM Cloud account {}".format(invoiceList[0]["accountId"]))
     return invoiceList
 
 def parseChildren(row, parentDescription, children):
@@ -313,20 +314,17 @@ def getInvoiceDetail(startdate, enddate):
                        records billingItem.resourceTableId is link to storage.
                        note: user must have classic Infrastructure access for storage components
                 """
-                if storageFlag:
-                    Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
-                                        mask="id, billingItemId,categoryCode,category,category.group, hourlyFlag,hostName,domainName,location,notes,product.description,product.taxCategory,product.attributes.attributeType,billingItem.resourceTableId," \
-                                             "createDate,totalRecurringAmount,totalOneTimeAmount,usageChargeFlag,hourlyRecurringFee,children.billingItemId,children.description,children.category.group," \
-                                             "children.categoryCode,children.product,children.product.taxCategory,children.product.attributes,children.product.attributes.attributeType,children.recurringFee")
-                else:
-                    Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
-                                        mask="id, billingItemId,categoryCode,category,category.group, hourlyFlag,hostName,domainName,location,notes,product.description,product.taxCategory,product.attributes.attributeType," \
-                                             "createDate,totalRecurringAmount,totalOneTimeAmount,usageChargeFlag,hourlyRecurringFee,children.billingItemId,children.description,children.category.group," \
-                                             "children.categoryCode,children.product,children.product.taxCategory,children.product.attributes,children.product.attributes.attributeType,children.recurringFee")
+
+                Billing_Invoice = client['Billing_Invoice'].getInvoiceTopLevelItems(id=invoiceID, limit=limit, offset=offset,
+                                    mask="id, billingItemId,categoryCode,category,category.group, hourlyFlag,hostName,domainName,location,notes,product.description,product.taxCategory,product.attributes.attributeType," \
+                                         "createDate,totalRecurringAmount,totalOneTimeAmount,usageChargeFlag,hourlyRecurringFee,children.billingItemId,children.description,children.category.group," \
+                                         "children.categoryCode,children.product,children.product.taxCategory,children.product.attributes,children.product.attributes.attributeType,children.recurringFee")
             except SoftLayer.SoftLayerAPIError as e:
                 logging.error("Billing_Invoice::getInvoiceTopLevelItems: %s, %s" % (e.faultCode, e.faultString))
                 quit()
             count = 0
+
+
             # ITERATE THROUGH DETAIL
             for item in Billing_Invoice:
                 logging.debug(item)
@@ -414,16 +412,13 @@ def getInvoiceDetail(startdate, enddate):
 
                 # if storage flag specified, lookup existing note from object stored in dataframe
                 if storageFlag and (category == "storage_service_enterprise" or category == "performance_storage_iops" or category == "storage_as_a_service"):
-                    if "resourceTableId" in item["billingItem"]:
-                        resourceTableId = item["billingItem"]["resourceTableId"]
-                        result = networkStorageDF.query('id == @resourceTableId')
-                        if len(result) > 0:
-                            storage_notes = result['notes'].values[0]
-                        else:
-                            storage_notes = "Volume Deleted."
+                    result = networkStorageDF.query('billingItemId == @billingItemId')
+                    if len(result) > 0:
+                        storage_notes = result['notes'].values[0]
+                    else:
+                        storage_notes = ""
                 else:
                     storage_notes = ""
-
                 if category == "storage_service_enterprise":
                     iops = getDescription("storage_tier_level", item["children"])
                     storage = getDescription("performance_storage_space", item["children"])
