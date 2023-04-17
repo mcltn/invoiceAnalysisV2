@@ -4,13 +4,13 @@ specified, then consolidates the data into an Excel worksheet for billing analys
 In addition to consolidation of the detailed data and formatting consistent with SLIC/CFTS invoices, pivot tables are created to aid in reconiliation of  invoices charges.
 
 ## Table of Contents
-1. Identity and Access Management Requirements
-2. Output Description
-3. Script Execution
-4. Other included Scripts
-5. [Code Engine](#Running-Invoice-Analysis-Report-as-a-Code-Engine-Job.): Configuring Invoice Analysis Report to produce output monthly in Code Engine
+1. [Identity and Access Management Requirements](#identity-&-access-management-requirements)
+2. [Output Description](#output-description)
+3. [Script Execution](#script-execution-instructions)
+4. [Other included Scripts](other-scripts.md)
+5. Code Engine: [Configuring Invoice Analysis Report to produce output monthly in Code Engine](#running-invoice-analysis-report-as-a-code-engine-job)
 
-### Identity & Access Management Requirements
+## Identity & Access Management Requirements
 | APIKEY                                     | Description                                                   | Min Access Permissions
 |--------------------------------------------|---------------------------------------------------------------|----------------------
 | IBM Cloud API Key                          | API Key used access classic invoices.                         | IAM Billing Viewer Role
@@ -18,7 +18,7 @@ In addition to consolidation of the detailed data and formatting consistent with
 | ims_username, ims_password<br/>ims_account | Credentials for internal IBM IMS access.                      | IMS Access to Account|
 
 
-### Output Description (invoiceAnalysis.py)
+## Output Description
 An Excel worksheet is created with multiple tabs from the collected data from the IBM Cloud Classic Invoices, which will include PaaS usage for the purpose of reconciliation of charges.
 In general SLIC/CFTS Invoice Month contains all RECURRING, NEW, ONE-TIME-CHARGE, and CREDIT invoices between the 20th of the previous month and the 19th of the current month.  If a range of
 months is specified, tabs will either be created for each month, or a single table will display monthly usage side by side.   Note PaaS Usage appears on the RECURRING invoice in arrears 
@@ -27,15 +27,12 @@ for two months prior.   (i.e April PaaS Usage, will appear on the June 1st, RECU
 Up to 3 SLIC/CFTS Invoices are generated each month.  One for IaaS charges, one for PaaS Charges, and one for Credit Charges.  Depending on how the SLIC account is configured and whether
 there are manual billing processes required this can change the format of invoices.  These are described below as Type 1 or Type 2 below.
 
-### Type 1 (most common) Reconciliation Approach (Default Output)
-
-**Detail**
-
+### Detail Tabs
 | Tab Name      | Default | flag to change default| Description of Tab 
 |---------------|---------|----------------------|-------------------
 | Detail | True | --no-detail | Detailed list of every invoice line item (including chidlren line items) from all invoices types between date range specified.
 
-**Tabs created for each month in range specified and used for reconciliation against invoicese.**
+### Tabs created for each month in range specified and used for reconciliation against invoices
 
 | Tab Name      | Default | flag to change default| Description of Tab 
 |---------------|---------|----------------------|-------------------
@@ -44,7 +41,7 @@ there are manual billing processes required this can change the format of invoic
 | PaaS_YYYY-MM  | True | --no-reconcilliation | Table matching portal PaaS charges on RECURRING invoice PaaS for that month, which are included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for type1, though the detail is provided at a service level on this tab to faciliate reconcillation.  PaaS charges are for usage 2 months in arrears. 
 | Credit-YYYY-MM |  True | --no-reconcilliation | Table of Credit Invoics to their corresponding IBM SLIC/CFTS invoice(s). 
 
-**Tabs which are created with range of months displayed as columns in each tab and used for understanding month to month change**
+### Tabs which are created with range of months displayed as columns in each tab and used for understanding month to month change**
 
 | Tab Name      | Default | flag to change default | Description of Tab 
 |---------------|---------|-----------------------|-------------------
@@ -57,59 +54,15 @@ there are manual billing processes required this can change the format of invoic
 | MnthlyBareMetalServerPivot | True | --no-serverdetail     | A table of monthly Bare Metal Server if they exist 
 | StoragePivot | False | --storage             | A Table of all Block and File Storage allocations by location with custom notes (if used)
 
-
-Methodology for reconciliation
+### Methodology for reconciliation
 1. First Look at the IaaS-YYYY-MM tab for month being reconciled.  For each portal invoice (NEW, ONE-TIME-CHARGE, and RECURRING), the charges can be split into three categories VMware License Charges, Classic COS Charges, and All other Classic IaaS Charges.  These should match a line item on the SLIC/CFTS invoice.
 2. Next look at the PaaS-YYYY-MM tab for month being reconciled.  PaaS charges only appear on the RECURRING invoice.  The total should match the SLIC/CFTS invoice total.
 3. Next look at the Credit-YYYY-MM tab for month being reconciled.   For each CREDIT invoice the total should match the SLIC/CFTS invoice.
-
-If you don't understand the line item charges on any of the three invoices, for IaaS you can use the IaaS-Detail-YYYY-MM tab for an additional level of detail.  Additionally using the Category
-detail tab and Virtual and Baremetal pivot tabs to compare month to month changes to identify what changed.  
 
    ***example:*** to provide the 3 latest months of detail
    ```bazaar
    $ export IC_API_KEY=<ibm cloud apikey>
    $ python invoiceAnalysis.py -m 3
-   ```
-
-### Type 2 (less common) Reconciliation Approach (specify --type2 on command line to generate this output)
-**Details**
-
-| Tab Name      | Default | flag to change default| Description of Tab 
-|---------------|---------|----------------------|-------------------
-| Detail | True | --no-detail | Detailed list of every invoice line item (including chidlren line items) from all invoices types between date range specified.
-
-**Tabs created for each month in range specified and used for reconciliation against invoicese.**
-
-| Tab Name      | Default | flag to change default| Description of Tab 
-|---------------|---------|----------------------|-------------------
-| IaaS_YYYY-MM  | True | --no-reconcilliation | Table matching each portal invoice's IaaS and PaaS Charges. Grouped by Product or INV_PRODID.  These amounts should match the SLIC/CFTS invoice amounts and aid in reconciliation. 
-| PaaS_YYYY-MM  | True | --no-reconcilliation | Table matching portal PaaS COS charges on RECURRING invoice PaaS for that month, which are included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for type1, though the detail is provided at a service level on this tab to faciliate reconcillation.  PaaS charges are for usage 2 months in arrears. 
-| Credit-YYYY-MM |  True | --no-reconcilliation | Table of Credit Invoics to their corresponding IBM SLIC/CFTS invoice(s). 
-
-
-**Tabs which are created with range of months displayed as columns in each tab**
-
-| Tab Name                | Default | flag to change default | Description of Tab 
-|-------------------------|---------|------------------------|-------------------
-| CategoryGroupSummary    | True    | --no-summary          | A pivot table of all charges shown by Invoice Type and Category Groups by month. 
-| CategoryDetail          | True    | --no-summary          | A pivot table of all charges by Invoice Type, Category Group, Category and specific service Detail by month.
-| Classic_COS_Detail      | False   | --cosdetail            | is a table of detailed usage from Classic Cloud Object Storage.  Detail is provided for awareness, but will not appear on invoice.
-| StoragePivot            | False   | --storage              | A Table of all Block and File Storage allocations by location with custom notes (if used)
-
-Methodology for reconciliation
-1. First Look at the IaaS_YYYY-MM.  These are the line items that should be broken out on the monthly Infrastructure as a Service Invoice.   Items with the same INV_PRODID or a Classic Infrastructure will appear as one line item.  If correct you should be able to match all but two line items on invoice.
-2. Next look at the PaaS_YYYY=MM.   These are the PaaS COS line items.    The lines items should match this invoice.  Items with the same INV_PRODID will appear as one line item on the invoice.
-3. Any credits will appear on the Credit-YYYY-MM tab.
-
-***Caveats***
-   - Items with the same INV_PRODID will appear as one line item on the invoice.   For most services this correlates to one usage metric, but several services combine metrics under on INV_PRODID and these will need to be summed on the ***IaaS_Invoice_Detail*** tab manually to match the line item on the invoice.
-   - If on the ***IaaS_Invoice_Detail*** tab you can't find a corresponding line item on the invoice (other than the items mentioned in step 1) it's likley that it was included with the ***Classic_IaaS_combined*** or vice-versa.
-
-   ***example:*** to provide the 3 latest months of detail
-   ```bazaar
-   $ export IC_API_KEY=<ibm cloud apikey>
-   $ python invoiceAnalysis.py -m 3 --type2
    ```
 
 ## Script Execution Instructions
@@ -131,32 +84,32 @@ $ ./islcli login
 ```
 3. Set environment variables which can be used.  IBM COS only required if file needs to be written to COS, otherwise file will be written locally.
 
-| Parameter      | Environment Variable | Default               | Description                   
-|----------------|----------------------|-----------------------|-------------------------------
-| --IC_API_KEY, -k | IC_API_KEY           | None                  | IBM Cloud API Key to be used to retrieve invoices and usage. 
-| --username     | ims_username         | None                  | Required only if using internal authorization (used instead of IC_API_KEY) 
-| --password     | ims_password         | None                  | Required only if using internal authorization (used instead of IC_API_KEY) 
-| --account      | ims_account          | None                  | Required only if using internal authorization to specify IMS account to pull. 
-| --STARTDATE, -s | startdate            | None                  | Start Month in YYYY-MM format 
-| --ENDDATE, -e  | enddate              | None                  | End Month in YYYY-MM format   
-| --months       | months               | 1                     | Number of months including last full month to include in report. (use instead of -s/-e) 
-| --COS_APIKEY   | COS_APIKEY           | None                  | COS API to be used to write output file to object storage, if not specified file written locally. 
-| --COS_BUCKET   | COS_BUCKET           | None                  | COS Bucket to be used to write output file to. 
-| --COS_ENDPOINT | COS_ENDPOINT         | None                  | COS Endpoint (with https://) to be used to write output file to. 
-| --COS_INSTANCE_CRN | COS_INSTANCE_CRN     | None                  | COS Instance CRN to be used to write output file to. 
-| --sendGridApi  | sendGridApi          | None                  | SendGrid API key to use to send Email. 
-| --sendGridTo   | sendGridTo           | None                  | SendGrid comma delimited list of email addresses to send output report to. 
-| --sendGridFrom | sendGridFrom         | None                  | SendGrid from email addresss to send output report from. 
-| --sendGridSubject | sendGridSubject      | None                  | SendGrid email subject.       
-| --output       | output               | invoice-analysis.xlsx | Output file name used.        
-| --SL_PRIVATE   |                      | --no_SL_PRIVATE       | Whether to use Public or Private Endpoint. 
-| --type2        |                      | --no_type2            | Specify Type 2 output, if not specified defaults to Type 1 
-| --storage      |                      | --no_storage          | Whether to write additional level of classic Block & File storage analysis to worksheet (default: False) 
-| --no-summary   |                      | --summary             | Whether to write summary detail tabs to worksheet. (default: True)
-| --no-detail    |                      | --detail              | Whether to Write detail tabs to worksheet. (default: True)
-| --no-reconciliation |                      | --reconciliation      | Whether to write invoice reconciliation tabs to worksheet. (default: True)
-| --no-serverdetail |                      | --serverdetail        | Whether to write server detail tabs to worksheet (default: True)
-| --cosdetail    |                      | --no-cosdetail        | Whether to write Classic OBject Storage tab to worksheet (default: False)
+| Parameter                 | Environment Variable | Default               | Description                   
+|---------------------------|----------------------|-----------------------|-------------------------------
+| --IC_API_KEY, -k          | IC_API_KEY           | None                  | IBM Cloud API Key to be used to retrieve invoices and usage. 
+| --username                | ims_username         | None                  | Required only if using internal authorization (used instead of IC_API_KEY) 
+| --password                | ims_password         | None                  | Required only if using internal authorization (used instead of IC_API_KEY) 
+| --account                 | ims_account          | None                  | Required only if using internal authorization to specify IMS account to pull. 
+| --STARTDATE, -s           | startdate            | None                  | Start Month in YYYY-MM format 
+| --ENDDATE, -e             | enddate              | None                  | End Month in YYYY-MM format   
+| --months                  | months               | 1                     | Number of months including last full month to include in report. (use instead of -s/-e) 
+| --COS_APIKEY              | COS_APIKEY           | None                  | COS API to be used to write output file to object storage, if not specified file written locally. 
+| --COS_BUCKET              | COS_BUCKET           | None                  | COS Bucket to be used to write output file to. 
+| --COS_ENDPOINT            | COS_ENDPOINT         | None                  | COS Endpoint (with https://) to be used to write output file to. 
+| --COS_INSTANCE_CRN        | COS_INSTANCE_CRN     | None                  | COS Instance CRN to be used to write output file to. 
+| --sendGridApi             | sendGridApi          | None                  | SendGrid API key to use to send Email. 
+| --sendGridTo              | sendGridTo           | None                  | SendGrid comma delimited list of email addresses to send output report to. 
+| --sendGridFrom            | sendGridFrom         | None                  | SendGrid from email addresss to send output report from. 
+| --sendGridSubject         | sendGridSubject      | None                  | SendGrid email subject.       
+| --output                  | output               | invoice-analysis.xlsx | Output file name used.        
+| --SL_PRIVATE              |                      | --no_SL_PRIVATE       | Whether to use Public or Private Endpoint. 
+| [--type2](type2output.md) |                      | --no_type2            | Specify Type 2 output (future format, not currently widely used)
+| --storage                 |                      | --no_storage          | Whether to write additional level of classic Block & File storage analysis to worksheet (default: False) 
+| --no-summary              |                      | --summary             | Whether to write summary detail tabs to worksheet. (default: True)
+| --no-detail               |                      | --detail              | Whether to Write detail tabs to worksheet. (default: True)
+| --no-reconciliation       |                      | --reconciliation      | Whether to write invoice reconciliation tabs to worksheet. (default: True)
+| --no-serverdetail         |                      | --serverdetail        | Whether to write server detail tabs to worksheet (default: True)
+| --cosdetail               |                      | --no-cosdetail        | Whether to write Classic OBject Storage tab to worksheet (default: False)
 
 3. Run Python script (Python 3.9+ required).</br>
 To analyze invoices between two months.
@@ -226,7 +179,7 @@ optional arguments:
 
 ```
 
-## Running Invoice Analysis Report as a Code Engine Job.
+## Running Invoice Analysis Report as a Code Engine Job
 Requirements
 * Creation of an Object Storage Bucket to store the script output in at execution time. 
 * Creation of an IBM Cloud Object Storage Service API Key with read/write access to bucket above
