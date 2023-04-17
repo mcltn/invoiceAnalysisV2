@@ -1,11 +1,14 @@
-### Type 2 (less common) Reconciliation Approach (specify --type2 on command line to generate this output)
-**Details**
+# Type 2 Format (--type2)
 
+new experimental output format which is less common. but breaks out SLIC invoice line item detail by each product code.  To generate this output specify --type2 on command line.
+
+### Detail Tabs
 | Tab Name      | Default | flag to change default| Description of Tab 
 |---------------|---------|----------------------|-------------------
 | Detail | True | --no-detail | Detailed list of every invoice line item (including chidlren line items) from all invoices types between date range specified.
 
-**Tabs created for each month in range specified and used for reconciliation against invoicese.**
+### Monthly Invoice Tabs
+One tab is created for each month in range specified and used for reconciliation against invoices.   Only required tabs are created.  (ie if no credit in a month, then no credit tab will be created)
 
 | Tab Name      | Default | flag to change default| Description of Tab 
 |---------------|---------|----------------------|-------------------
@@ -13,8 +16,8 @@
 | PaaS_YYYY-MM  | True | --no-reconcilliation | Table matching portal PaaS COS charges on RECURRING invoice PaaS for that month, which are included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for type1, though the detail is provided at a service level on this tab to faciliate reconcillation.  PaaS charges are for usage 2 months in arrears. 
 | Credit-YYYY-MM |  True | --no-reconcilliation | Table of Credit Invoics to their corresponding IBM SLIC/CFTS invoice(s). 
 
-
-**Tabs which are created with range of months displayed as columns in each tab**
+### Summary Tabs
+Tabs are created to summarize usage data based on SLIC invoice month.   If a range of months is specified, months are displayed as columns in each tab and can be used to compare month to month changes
 
 | Tab Name                | Default | flag to change default | Description of Tab 
 |-------------------------|---------|------------------------|-------------------
