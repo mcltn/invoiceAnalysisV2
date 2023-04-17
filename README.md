@@ -32,7 +32,8 @@ there are manual billing processes required this can change the format of invoic
 |---------------|---------|----------------------|-------------------
 | Detail | True | --no-detail | Detailed list of every invoice line item (including chidlren line items) from all invoices types between date range specified.
 
-### Tabs created for each month in range specified and used for reconciliation against invoices
+### Monthly Tabs
+*One tab is created for each month in range specified and used for reconciliation against invoices.   Only required tabs are created.  (ie if no credit in a month, then no credit tab will be created)*
 
 | Tab Name      | Default | flag to change default| Description of Tab 
 |---------------|---------|----------------------|-------------------
@@ -41,7 +42,8 @@ there are manual billing processes required this can change the format of invoic
 | PaaS_YYYY-MM  | True | --no-reconcilliation | Table matching portal PaaS charges on RECURRING invoice PaaS for that month, which are included in that months SLIC/CFTS invoice.  PaaS Charges are typically consolidated into one amount for type1, though the detail is provided at a service level on this tab to faciliate reconcillation.  PaaS charges are for usage 2 months in arrears. 
 | Credit-YYYY-MM |  True | --no-reconcilliation | Table of Credit Invoics to their corresponding IBM SLIC/CFTS invoice(s). 
 
-### Tabs which are created with range of months displayed as columns in each tab and used for understanding month to month change**
+### Summary Tabs
+Tabs are created summarizing data.   If range of months is specfiied, months are displayed as columns in each tab and can be used to compare month to month change**
 
 | Tab Name      | Default | flag to change default | Description of Tab 
 |---------------|---------|-----------------------|-------------------
@@ -54,16 +56,11 @@ there are manual billing processes required this can change the format of invoic
 | MnthlyBareMetalServerPivot | True | --no-serverdetail     | A table of monthly Bare Metal Server if they exist 
 | StoragePivot | False | --storage             | A Table of all Block and File Storage allocations by location with custom notes (if used)
 
-### Methodology for reconciliation
+#### Methodology for reconciliation
 1. First Look at the IaaS-YYYY-MM tab for month being reconciled.  For each portal invoice (NEW, ONE-TIME-CHARGE, and RECURRING), the charges can be split into three categories VMware License Charges, Classic COS Charges, and All other Classic IaaS Charges.  These should match a line item on the SLIC/CFTS invoice.
 2. Next look at the PaaS-YYYY-MM tab for month being reconciled.  PaaS charges only appear on the RECURRING invoice.  The total should match the SLIC/CFTS invoice total.
 3. Next look at the Credit-YYYY-MM tab for month being reconciled.   For each CREDIT invoice the total should match the SLIC/CFTS invoice.
 
-   ***example:*** to provide the 3 latest months of detail
-   ```bazaar
-   $ export IC_API_KEY=<ibm cloud apikey>
-   $ python invoiceAnalysis.py -m 3
-   ```
 
 ## Script Execution Instructions
 
@@ -71,9 +68,9 @@ there are manual billing processes required this can change the format of invoic
 ````
 $ pip install -r requirements.txt
 ````
-2. For Internal IBM IMS users who wish to use internal credentials (with Yubikey 2FA) you must manually uninstall the Public SoftLayer SDK and manually 
-build the internal SDK for this script to function properly.  Additionally, while executing script you must be connected securely via Global Protect VPN 
-to IMS while running reports and will be prompted for your 2FA yubikey at execution time.   [Internal SDK & Instructions](https://github.ibm.com/SoftLayer/internal-softlayer-cli)
+2. For *Internal IBM IMS users* (employees) who wish to use internal credentials (with Yubikey 2FA) you must first manually uninstall the Public SoftLayer SDK and manually 
+build the internal SDK for this script to function properly.  Additionally, while executing script you must be connected securely to IBM via Global Protect VPN 
+while running reports and will be prompted for your 2FA yubikey at each execution time.   [Internal SDK & Instructions](https://github.ibm.com/SoftLayer/internal-softlayer-cli)
 ```azure
 $ pip uninstall SoftLayer
 $ git clone https://github.ibm.com/SoftLayer/internal-softlayer-cli
@@ -82,7 +79,7 @@ $ python setup.py install
 $ ./islcli login
 
 ```
-3. Set environment variables which can be used.  IBM COS only required if file needs to be written to COS, otherwise file will be written locally.
+3. Set environment variables which can be used.  IBM COS only required if file needs to be written to COS, otherwise file will be written locally.  It is recommended that environment variables be specified in local .env file.
 
 | Parameter                 | Environment Variable | Default               | Description                   
 |---------------------------|----------------------|-----------------------|-------------------------------
