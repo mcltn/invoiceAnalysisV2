@@ -3,16 +3,12 @@
 specified, then consolidates the data into an Excel worksheet for billing analysis.  All charges are aligned to the IBM SLIC/CFTS invoice cycle of the 20th to 19th of a month.
 In addition to consolidation of the detailed data and formatting consistent with SLIC/CFTS invoices, pivot tables are created to aid in reconiliation of  invoices charges.
 
-### Required Files
-Script | Description
------- | -----------
-invoiceAnalysis.py | Export usage detail by SLIC invoice month to an Excel file for all IBM Cloud Classic invoices.
-estimateCloudUsage.py | Estimate current monbth usage for Platform as a Service from start of month to current date & time
-classicConfigAnalysis.py | Analyze the Classic Bare Metal Servers within an account; outputing an Excel worksheet with various inventory details including network VLANs.
-classicConfigReport.py | Creates a detailed report of Classic Bare Metal Servers within an account outputing a plain text inventory report.
-requirements.txt | Package requirements
-logging.json | LOGGER config used by script
-
+## Table of Contents
+1. Identity and Access Management Requirements
+2. Output Description
+3. Script Execution
+4. Other included Scripts
+5. [Code Engine](#Running-Invoice-Analysis-Report-as-a-Code-Engine-Job.): Configuring Invoice Analysis Report to produce output monthly in Code Engine
 
 ### Identity & Access Management Requirements
 | APIKEY                                     | Description                                                   | Min Access Permissions
@@ -229,34 +225,6 @@ optional arguments:
 
 
 ```
-
-### Estimating IBM Cloud Usage Month To Date
-
-```bazaar
-export IC_API_KEY=<ibm cloud apikey>
-python estimateCloudUsage.py
-
-usage: estimateCloudUsage.py [-h] [-k apikey][--output OUTPUT]
-
-Estimate Platform as a Service Usage.
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -k apikey, --IC_API_KEY apikey
-                        IBM Cloud API Key
-
-  --output OUTPUT       Filename Excel output file. (including extension of .xlsx)
-```
-### Output Description for estimateCloudUsage.py
-Note this shows current month usage only.  For SLIC/CFTS invoices, this actual usage from IBM Cloud will be consolidated onto the classic RECURRING invoice
-one month later, and be invoiced on the SLIC/CFTS invoice at the end of that month.  (i.e. April Usage, appears on the June 1st RECURRING invoice, and will
-appear on the end of June SLIC/CFTS invoice)  Additionally in most cases for SLIC accounts, discounts are applied at the time the data is fed to the RECURRING
-invoice.  Other words the USAGE charges are generally list price, but eppear on the Portal RECURRING invoice at their discounted rate.
-*Excel Tab Explanation*
-   - ***Detail*** is a table of all month to date usage for billable metrics for each platform service.   Each row contains a unique service, resource, and metric with the rated usage and cost, and the resulting cost for discounted items.
-   - ***PaaS_Summary*** is a pibot table showing the month to date estimated cost for each PaaS service.
-   - ***PaaS_Metric_Summary*** is a pivot table showing the month to date usage and cost for each metric for each service instance and plan.
-
 
 ## Running Invoice Analysis Report as a Code Engine Job.
 Requirements
